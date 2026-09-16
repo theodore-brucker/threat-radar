@@ -1,0 +1,30 @@
+# /etc/systemd/system/cowrie.service
+[Unit]
+Description=Cowrie SSH/Telnet honeypot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cowrie
+Group=cowrie
+WorkingDirectory=/opt/cowrie
+Environment=PATH=/opt/cowrie/cowrie-env/bin:/usr/bin:/bin
+Environment=COWRIE_STDOUT=yes
+ExecStart=/opt/cowrie/cowrie-env/bin/cowrie start
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+
+# /etc/systemd/system/cowrie.service.d/10-validate-userdb.conf
+# A single malformed userdb line stops ALL authentication on this sensor,
+# silently, because Cowrie reloads the file on every auth attempt and an
+# IndexError aborts the whole load. That cost seventeen days in August 2026.
+# Fail to start rather than run with authentication silently dead. Default
+# mode, so only genuinely fatal lines block startup; dead-but-harmless
+# entries are reported and tolerated.
+[Service]
+ExecStartPre=/usr/bin/python3 /opt/cowrie/bin/validate_userdb.py /opt/cowrie/etc/userdb.txt

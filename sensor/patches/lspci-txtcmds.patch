@@ -1,0 +1,28 @@
+diff --git a/src/cowrie/commands/lspci.py b/src/cowrie/commands/lspci.py
+index dcea8735..337d771c 100644
+--- a/src/cowrie/commands/lspci.py
++++ b/src/cowrie/commands/lspci.py
+@@ -41,6 +41,23 @@ commands = {}
+ 
+ class Command_lspci(HoneyPotCommand):
+     def call(self):
++        # Persona override: a built-in wins over txtcmds in getCommand(), so the
++        # operator file is read here instead. Keeps hardware detail in data
++        # rather than in this source file, which is replaced on upgrade.
++        try:
++            from pathlib import Path
++
++            from cowrie.core.config import CowrieConfig
++
++            base = CowrieConfig.get("honeypot", "txtcmds_path", fallback="")
++            if base:
++                f = Path(base) / "usr/bin/lspci"
++                if f.is_file():
++                    text = f.read_text()
++                    self.write(text if text.endswith("\n") else text + "\n")
++                    return
++        except Exception:
++            pass
+         self.write(lspci_out())
+ 
+ 
