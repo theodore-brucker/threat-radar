@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Threat Radar</title>
+<meta name="description" content="Live telemetry from a decoy server exposed on the public internet.">
+<meta name="color-scheme" content="light dark">
+<meta name="tr-base" content="__TR_BASE__">
+<link rel="stylesheet" href="__TR_BASE__/static/css/tokens.css">
+<link rel="stylesheet" href="__TR_BASE__/static/css/app.css">
+<link rel="stylesheet" href="__TR_BASE__/static/css/components.css">
+<link rel="stylesheet" href="__TR_BASE__/static/css/print.css" media="print">
+<script>
+  /* Theme is resolved before first paint so a dark-mode reader never gets a
+     white flash. Kept deliberately tiny; everything else is a module. */
+  (function () {
+    try {
+      var p = localStorage.getItem("tr.theme") || "auto";
+      var dark = p === "dark" || (p === "auto" &&
+        window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    } catch (e) { /* storage blocked: light is the correct default */ }
+  })();
+</script>
+</head>
+<body data-mode="exec" data-density="compact">
+<a class="skiplink" href="#view">Skip to content</a>
+<div class="classbar">Unclassified // Honeypot telemetry // All views my own</div>
+<div class="stalebar" id="stalebar" hidden></div>
+<div class="shell">
+  <nav class="nav" aria-label="sections">
+    <div class="brand">
+      <b>Threat<i>/</i>Radar</b>
+      <span>theobrucker.us</span>
+    </div>
+    <ul>
+      <li><a href="#" data-path="/">Overview <span class="k">01</span></a></li>
+      <li><a href="#" data-path="/sources">Sources <span class="k">02</span></a></li>
+      <li><a href="#" data-path="/credentials">Credentials <span class="k">03</span></a></li>
+      <li><a href="#" data-path="/payloads">Malware <span class="k">04</span></a></li>
+      <li><a href="#" data-path="/sessions">Sessions <span class="k">05</span></a></li>
+      <li><a href="#" data-path="/tunnels">Relay attempts <span class="k">06</span></a></li>
+      <li><a href="#" data-path="/method">Method <span class="k">07</span></a></li>
+    </ul>
+    <div class="foot">
+      <div><span class="dot live" id="health-dot"></span> <span id="health-text">checking</span></div>
+      <div id="coverage"></div>
+      <div class="hint"><kbd>?</kbd> shortcuts</div>
+    </div>
+  </nav>
+
+  <div class="main">
+    <header class="topbar" data-print-scope="">
+      <h1 id="page-title">Overview</h1>
+      <div class="omni">
+        <input id="omnibar" type="search" autocomplete="off" spellcheck="false"
+               aria-label="search any indicator"
+               placeholder="address, hash, user:pass, AS number, date   ( / )">
+        <ul id="omnibar-results" class="omni-drop" hidden></ul>
+      </div>
+      <div class="spacer"></div>
+      <div class="seg-ctl modeswitch" role="group" aria-label="detail level">
+        <button data-mode="exec" aria-pressed="true">Executive</button>
+        <button data-mode="analyst" aria-pressed="false">Analyst</button>
+      </div>
+      <div class="sep" aria-hidden="true"></div>
+      <label class="ctl-label" for="window-select">window</label>
+      <select id="window-select" aria-label="time window">
+        <option value="1">24 hours</option>
+        <option value="7">7 days</option>
+        <option value="14">14 days</option>
+        <option value="30">30 days</option>
+        <option value="90">90 days</option>
+        <option value="3650">All time</option>
+      </select>
+      <div class="sep" aria-hidden="true"></div>
+      <button id="density-toggle" class="quiet" title="row density (d)" aria-label="row density">compact</button>
+      <button id="theme-toggle" class="quiet" title="colour theme (t)" aria-label="colour theme">auto</button>
+      <button id="chat-toggle" class="quiet" title="ask the sensor (c)">Ask</button>
+    </header>
+    <main class="content" id="view" tabindex="-1"></main>
+  </div>
+</div>
+
+<script type="module" src="__TR_BASE__/static/js/boot.js"></script>
+</body>
+</html>

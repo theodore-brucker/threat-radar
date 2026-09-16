@@ -1,0 +1,37 @@
+*.env
+.ssh_pull
+.ssh_pull.pub
+.ssh_known_hosts
+.pull.lock
+*.htpasswd
+data/
+spool/
+*.db
+*.db-shm
+*.db-wal
+venv/
+__pycache__/
+*.pyc
+.backups/
+.insights.lock
+*.bak*
+*.bak-*
+*.bak.*
+app/static/_archive/
+tr-upgrade/
+samples/
+
+# Live persona and operator runbooks live in the private persona repo, which
+# shares this sensor/ layout and is overlaid on top of it at deploy time.
+# These lines stop an overlaid checkout from leaking them back in here.
+sensor/cowrie.cfg
+sensor/honeyfs/
+sensor/persona/
+sensor/share/
+sensor/HOST-VERSIONS.txt
+sensor/bin/make_token_file.py
+UPGRADE-*.md
+
+# canary material, never commit anywhere
+sensor/etc/canary.env
+**/.aws/credentials

@@ -1,0 +1,196 @@
+/* app.css v4 - reset, shell, chrome, typography.
+   Components live in components.css. Print lives in print.css. */
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+
+html { scrollbar-gutter: stable; }
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--fs-15);
+  line-height: var(--lh-body);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a { color: var(--accent); text-decoration: none; text-underline-offset: 3px; }
+a:hover { color: var(--accent-deep); text-decoration: underline; }
+
+h1, h2, h3 { font-weight: 700; letter-spacing: -.01em; line-height: var(--lh-tight); margin: 0; }
+
+.mono { font-family: var(--font-mono); }
+.dim { color: var(--ink-dim); }
+.sub2 { color: var(--ink-dim); font-size: var(--fs-12); }
+.nowrap { white-space: nowrap; }
+
+/* ---------- focus -------------------------------------------------------
+   One treatment for everything. Two rings so it reads on the paper canvas
+   and on the ink rail without a second rule. v3 removed the outline on the
+   omnibar and defined nothing anywhere else. */
+
+:focus { outline: none; }
+:focus-visible {
+  outline: var(--ring) solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+.nav :focus-visible { outline-color: var(--accent-rail); outline-offset: -2px; }
+
+.skiplink {
+  position: absolute; left: -9999px; top: 0; z-index: 200;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--accent); padding: var(--s2) var(--s3);
+  font-size: var(--fs-13);
+}
+.skiplink:focus-visible { left: var(--s3); top: var(--s3); }
+
+/* ---------- classification strip ---------- */
+
+.classbar {
+  height: var(--classbar-h);
+  background: var(--surface-rail); color: #E8EEF1;
+  font-family: var(--font-mono); font-size: 10.5px;
+  letter-spacing: .12em; text-transform: uppercase;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ---------- shell -------------------------------------------------------
+   v3 gave .nav height:100vh inside a shell that already sat below a 22px
+   classbar, so the sensor status footer fell off the bottom of every page.
+   The rail is its own viewport-height column measured from the classbar. */
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--rail-w) minmax(0, 1fr);
+  min-height: calc(100vh - var(--classbar-h));
+}
+
+.nav {
+  background: var(--surface-rail); color: #C3CFD4;
+  display: flex; flex-direction: column;
+  position: sticky; top: 0;
+  height: calc(100vh - var(--classbar-h));
+  border-right: 1px solid #000;
+}
+.brand {
+  padding: var(--s4) var(--s4) var(--s3);
+  border-bottom: 1px solid rgba(232, 238, 241, .12);
+}
+.brand b { font-size: var(--fs-15); font-weight: 700; letter-spacing: .04em; display: block; color: #fff; }
+.brand b i { font-style: normal; color: var(--accent-rail); }
+.brand span { font-family: var(--font-mono); font-size: 10.5px; color: #8496A0; }
+
+.nav ul { list-style: none; margin: var(--s2) 0; padding: 0; }
+.nav a {
+  display: flex; align-items: center; gap: var(--s2);
+  padding: 7px var(--s4);
+  color: #C3CFD4; border-left: 3px solid transparent;
+  font-size: var(--fs-13); line-height: 1.4;
+}
+.nav a:hover { background: rgba(232, 238, 241, .06); color: #fff; text-decoration: none; }
+.nav a[aria-current="page"] {
+  color: #fff; border-left-color: var(--accent-rail);
+  background: rgba(232, 238, 241, .08);
+}
+.nav a .k { font-family: var(--font-mono); font-size: 10px; color: #6E828C; margin-left: auto; }
+
+.nav .foot {
+  margin-top: auto; padding: var(--s3) var(--s4);
+  border-top: 1px solid rgba(232, 238, 241, .12);
+  font-family: var(--font-mono); font-size: 10.5px; color: #8496A0;
+  line-height: 1.7; display: flex; flex-direction: column; gap: 2px;
+}
+.nav .foot .hint { color: #6E828C; margin-top: var(--s1); }
+.nav .foot kbd { color: #A9BAC2; }
+
+.dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.dot.live { background: #35C0B2; }
+.dot.stale { background: #E8B44F; }
+.dot.fault { background: #EE6F86; }
+
+/* ---------- top bar ---------- */
+
+.main { min-width: 0; display: flex; flex-direction: column; }
+
+.topbar {
+  height: var(--topbar-h); flex: 0 0 auto;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  display: flex; align-items: center; gap: var(--s3);
+  padding: 0 var(--gutter);
+  position: sticky; top: 0; z-index: 30;
+}
+.topbar h1 {
+  font-size: var(--fs-18); margin: 0; font-weight: 700;
+  white-space: nowrap; flex: 0 0 auto;
+}
+.topbar .spacer { margin-left: auto; }
+.topbar .sep { width: 1px; height: 22px; background: var(--line); flex: 0 0 auto; }
+
+.content {
+  padding: var(--s5) var(--gutter) var(--s7);
+  max-width: var(--maxw);
+  width: 100%;
+}
+
+/* ---------- controls ---------- */
+
+select, button, input {
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 5px var(--s2);
+  font-family: var(--font-mono); font-size: var(--fs-12);
+  line-height: 1.5;
+}
+button { cursor: pointer; }
+button:hover, select:hover { border-color: var(--accent); }
+button[disabled] { opacity: .5; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { background: var(--accent-deep); }
+button.quiet { background: transparent; border-color: transparent; color: var(--ink-dim); }
+button.quiet:hover { color: var(--ink); border-color: var(--line); }
+
+.ctl-label {
+  font-family: var(--font-mono); font-size: var(--fs-11);
+  letter-spacing: .08em; text-transform: uppercase; color: var(--ink-dim);
+}
+
+/* segmented control, used for mode and density */
+.seg-ctl { display: flex; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.seg-ctl button {
+  border: 0; border-radius: 0; background: var(--surface); color: var(--ink-dim);
+  padding: 5px 10px;
+}
+.seg-ctl button + button { border-left: 1px solid var(--line); }
+.seg-ctl button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.seg-ctl button:focus-visible { outline-offset: -2px; }
+
+/* The Executive/Analyst switch only changes the Overview. v3 showed it on
+   every page where it did nothing. */
+.modeswitch { display: none; }
+body[data-page="/"] .modeswitch { display: flex; }
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 1000px) {
+  .shell { grid-template-columns: 1fr; }
+  .nav {
+    position: static; height: auto; flex-direction: row; align-items: center;
+    overflow-x: auto; border-right: 0;
+  }
+  .nav ul { display: flex; margin: 0; }
+  .nav a { border-left: 0; border-bottom: 3px solid transparent; white-space: nowrap; }
+  .nav a[aria-current="page"] { border-left: 0; border-bottom-color: var(--accent-rail); }
+  .nav .foot, .nav a .k, .brand span { display: none; }
+  .content { padding: var(--s4) var(--s3) var(--s6); }
+  .topbar { gap: var(--s2); padding: 0 var(--s3); }
+  .topbar .ctl-label { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

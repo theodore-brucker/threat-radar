@@ -1,0 +1,108 @@
+/* print.css v4
+ *
+ * v3 hid the nav and the chat and stopped there. Two things were wrong with
+ * that. Every table kept max-height:60vh with overflow:auto, so a printed
+ * table was clipped to one screen of rows. And the classification strip was
+ * white text on an ink background, which disappears entirely when a browser
+ * prints without backgrounds, on a page whose top line is a marking.
+ *
+ * Loaded with media="print", so none of this costs anything on screen.
+ */
+
+@page {
+  margin: 14mm 12mm 16mm;
+}
+
+html, body {
+  background: #fff !important;
+  color: #000 !important;
+  font-size: 10pt;
+}
+
+/* Force the light palette. A dark-mode screenshot into a printer is an ink
+   cartridge and an unreadable page. */
+:root {
+  --canvas: #fff; --surface: #fff; --surface-sunk: #fff; --surface-rail: #fff;
+  --ink: #000; --ink-soft: #222; --ink-dim: #444;
+  --line: #999; --line-strong: #666; --track: #ddd;
+  --accent: #123763; --accent-tint: #fff; --accent-line: #999;
+  --alert: #7a1222; --alert-tint: #fff; --warn: #6b4800; --warn-tint: #fff;
+  --ok: #17513a; --ok-tint: #fff;
+  --stage-0: #555; --stage-1: #1D6A66; --stage-2: #1A4B8C;
+  --stage-3: #8A5D00; --stage-4: #A6192E;
+  --map-ocean: #fff; --map-land: #e6e6e6; --map-edge: #888; --map-grat: #eee;
+  --shadow-pop: none;
+}
+
+/* The marking prints as text with a rule, so it survives backgrounds off. */
+.classbar {
+  background: none !important; color: #000 !important;
+  border-bottom: 2px solid #000; height: auto; padding: 0 0 2mm; margin-bottom: 4mm;
+  justify-content: flex-start; font-size: 8pt; letter-spacing: .14em;
+}
+
+.nav, .chat, .topbar .seg-ctl, .topbar select, .topbar .ctl-label,
+.topbar .omni, .topbar .sep, .topbar button, .skiplink, .hovercard,
+.tbl-bar button, dialog.sheet { display: none !important; }
+
+.shell { display: block; min-height: 0; }
+.main { display: block; }
+.topbar {
+  position: static; height: auto; border-bottom: 1px solid #000;
+  padding: 0 0 2mm; margin-bottom: 4mm; background: none;
+}
+.topbar h1 { font-size: 16pt; }
+.content { padding: 0; max-width: none; }
+
+/* A printed page has to say what it is a print of. */
+.topbar::after {
+  content: "Threat Radar  ·  " attr(data-print-scope);
+  margin-left: auto; font-family: var(--font-mono); font-size: 8pt; color: #000;
+}
+
+.panel {
+  break-inside: avoid; border: 1px solid #999; margin-bottom: 4mm;
+  padding: 3mm; background: none;
+}
+.panel > .phead h2 { font-size: 11pt; }
+
+/* Tables print in full. This is the fix that matters most. */
+.tbl-wrap { overflow: visible !important; border: 1px solid #999; }
+table { font-size: 8.5pt; }
+thead { display: table-header-group; }
+tr { break-inside: avoid; }
+th {
+  position: static !important; background: #eee !important;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  border-bottom: 1px solid #000;
+}
+td { padding: 2px 4px; }
+tbody tr:hover td { background: none; }
+/* "show first 50" is a screen affordance; print everything that was loaded */
+tr[hidden] { display: table-row !important; }
+
+pre.code, pre.cmd {
+  max-height: none !important; overflow: visible !important;
+  white-space: pre-wrap !important; word-break: break-word;
+  border: 1px solid #999; background: none; font-size: 8pt;
+}
+pre.code code, pre.cmd code { white-space: pre-wrap !important; }
+pre.cmd.clamped code { max-height: none !important; overflow: visible !important; }
+.cmdbar { display: none !important; }
+
+.empty { border: 1px solid #ccc; background: none; }
+.skel-bar, .skel-row { display: none; }
+
+/* Where a link goes matters on paper, but only for external ones. */
+a[href^="http"]::after {
+  content: " <" attr(href) ">";
+  font-family: var(--font-mono); font-size: 7.5pt; color: #444;
+  word-break: break-all;
+}
+a { color: #000 !important; text-decoration: none; }
+a.ent { border-bottom: 0; }
+
+/* Stage chips are the one place colour carries meaning on paper, and it
+   never carries it alone: the numeral and the word both print. */
+.stage i { border: 1px solid #000; color: #000 !important; background: none !important; }
+.tag { border: 1px solid #999; background: none; }

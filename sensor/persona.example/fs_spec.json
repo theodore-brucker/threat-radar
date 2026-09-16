@@ -1,0 +1,20 @@
+{
+  "_note": [
+    "EXAMPLE filesystem spec. Applied to fs.pickle by sensor/bin/persona_fs.py.",
+    "Idempotent. Every file listed needs contents under honeyfs/ unless it is",
+    "marked token:true, in which case apply skips it until plant_token.sh has",
+    "installed real content."
+  ],
+  "remove": ["/.dockerenv"],
+  "dedupe": ["/home", "/", "/etc", "/opt"],
+  "links": [],
+  "dirs": [
+    {"path": "/home/svc", "uid": 1000, "gid": 1000, "mode": 16877, "ctime": "2026-01-15"},
+    {"path": "/etc/example", "uid": 0, "gid": 0, "mode": 16877, "ctime": "2026-01-15"}
+  ],
+  "files": [
+    {"path": "/etc/motd", "uid": 0, "gid": 0, "mode": 33188, "ctime": "2026-01-15"},
+    {"path": "/etc/issue.net", "uid": 0, "gid": 0, "mode": 33188, "ctime": "2026-01-15"},
+    {"path": "/etc/example/token.conf", "uid": 0, "gid": 0, "mode": 33184, "token": true, "ctime": "2026-03-02"}
+  ]
+}

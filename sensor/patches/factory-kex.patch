@@ -1,0 +1,36 @@
+diff --git a/src/cowrie/ssh/factory.py b/src/cowrie/ssh/factory.py
+index e4942b23..74b367a1 100644
+--- a/src/cowrie/ssh/factory.py
++++ b/src/cowrie/ssh/factory.py
+@@ -176,6 +176,31 @@ class CowrieSSHFactory(factory.SSHFactory):
+         except (NoOptionError, NoSectionError):
+             t.supportedCompressions = [b"zlib@openssh.com", b"zlib", b"none"]
+ 
++        # --- threat-radar kex override (begin) ---
++        try:
++            _want = [
++                i.strip().encode("utf-8")
++                for i in CowrieConfig.get("ssh", "kex").split(",")
++                if i.strip()
++            ]
++        except (NoOptionError, NoSectionError):
++            _want = []
++        if _want:
++            _have = set(t.supportedKeyExchanges)
++            _kept = [k for k in _want if k in _have]
++            _dropped = [k.decode() for k in _want if k not in _have]
++            if _dropped:
++                self._log.warning(
++                    "ssh.kex: not implemented by twisted, dropped: {d}".format(
++                        d=",".join(_dropped)
++                    )
++                )
++            if _kept:
++                t.supportedKeyExchanges = _kept
++            else:
++                self._log.warning("ssh.kex matched nothing supported; keeping defaults")
++        # --- threat-radar kex override (end) ---
++
+         t.factory = self
+ 
+         return t
