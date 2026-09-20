@@ -16,7 +16,7 @@ Group=cowrie
 WorkingDirectory=/opt/cowrie
 Environment=PATH=/opt/cowrie/cowrie-env/bin:/usr/bin:/bin
 Environment=COWRIE_STDOUT=yes
-ExecStart=/opt/cowrie/cowrie-env/bin/cowrie start
+ExecStart=/opt/cowrie/cowrie-env/bin/cowrie start --pidfile=/opt/cowrie/var/run/twistd.pid
 Restart=on-failure
 RestartSec=5
 
