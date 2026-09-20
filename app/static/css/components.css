@@ -576,31 +576,6 @@ button.copy:hover { border-color: var(--accent); }
 @keyframes skel { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
 @media (prefers-reduced-motion: reduce) { .skel-bar, .skel-row { animation: none; } }
 
-/* ---------- chat --------------------------------------------------------
-   Moved off the floating pill. It was the loudest element on every screen
-   and the least important thing on the page. */
-
-.chat {
-  position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100vw);
-  background: var(--surface); border-left: 1px solid var(--line-strong);
-  display: flex; flex-direction: column; z-index: 50;
-  transform: translateX(100%); transition: transform .18s ease;
-  box-shadow: var(--shadow-pop);
-}
-.chat[data-open="true"] { transform: translateX(0); }
-.chat header {
-  padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line);
-  display: flex; align-items: center; gap: var(--s2);
-}
-.chat header b { font-weight: 700; }
-.chat .log { flex: 1; overflow: auto; padding: var(--s4); display: flex; flex-direction: column; gap: var(--s3); }
-.chat .msg { font-size: var(--fs-13); line-height: 1.6; white-space: pre-wrap; }
-.chat .msg.you { border-left: 3px solid var(--accent); padding-left: var(--s2); }
-.chat .msg.bot { border-left: 3px solid var(--line); padding-left: var(--s2); color: var(--ink-soft); }
-.chat .msg.err { color: var(--alert); font-family: var(--font-mono); font-size: var(--fs-12); }
-.chat form { display: flex; gap: var(--s2); padding: var(--s4); border-top: 1px solid var(--line); }
-.chat input { flex: 1; font-family: var(--font-body); font-size: var(--fs-13); }
-
 /* ---------- shortcut sheet ---------- */
 
 dialog.sheet {

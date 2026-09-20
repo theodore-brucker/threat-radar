@@ -118,7 +118,6 @@ get "rail"                      "/api/v1/rail"
 get "funnel"                    "/api/v1/funnel"
 get "contributions"             "/api/v1/contributions"  '"contributed_samples"'
 get "spikes"                    "/api/v1/spikes"
-get "chat status"               "/api/v1/chat/status"
 
 # --------------------------------------------------------------------------
 note "list views, at two windows"

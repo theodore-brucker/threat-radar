@@ -7,7 +7,6 @@
  */
 
 import { wireShell, render, url, h } from "./core.js";
-import { mountChat } from "./chat.js";
 import { mountOmnibar } from "./omnibar.js";
 import { mountHovercards } from "./hovercard.js";
 import { mountTheme } from "./theme.js";
@@ -15,7 +14,6 @@ import { mountKeys } from "./keys.js";
 
 wireShell();
 mountTheme();
-mountChat();
 mountOmnibar();
 mountHovercards();
 mountKeys();

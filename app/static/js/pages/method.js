@@ -39,7 +39,7 @@ export async function render() {
           + "double counts."),
         P("Enrich: geo and ASN per address, VirusTotal and URLhaus per sample, both rate "
           + "limited and cached with a TTL against a free tier."),
-        P("Serve: FastAPI behind nginx. The dashboard and the chat open the database "
+        P("Serve: FastAPI behind nginx. The dashboard opens the database "
           + "read-only; ingestion, enrichment and pruning are the only writers."),
       ]),
       panel("Analysis", null, [

@@ -1,7 +1,7 @@
 /* print.css v4
  *
- * v3 hid the nav and the chat and stopped there. Two things were wrong with
- * that. Every table kept max-height:60vh with overflow:auto, so a printed
+ * v3 hid the nav and the side panel and stopped there. Two things were wrong
+ * with that. Every table kept max-height:60vh with overflow:auto, so a printed
  * table was clipped to one screen of rows. And the classification strip was
  * white text on an ink background, which disappears entirely when a browser
  * prints without backgrounds, on a page whose top line is a marking.
@@ -41,7 +41,7 @@ html, body {
   justify-content: flex-start; font-size: 8pt; letter-spacing: .14em;
 }
 
-.nav, .chat, .topbar .seg-ctl, .topbar select, .topbar .ctl-label,
+.nav, .topbar .seg-ctl, .topbar select, .topbar .ctl-label,
 .topbar .omni, .topbar .sep, .topbar button, .skiplink, .hovercard,
 .tbl-bar button, dialog.sheet { display: none !important; }
 

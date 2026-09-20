@@ -9,7 +9,6 @@
 
 import { h, navigate, setMode, setDays, setDensity, state, clearCache, render } from "./core.js";
 import { cycleTheme } from "./theme.js";
-import { toggleChat } from "./chat.js";
 
 const SECTIONS = ["/", "/sources", "/credentials", "/payloads", "/sessions", "/tunnels", "/method"];
 
@@ -21,7 +20,6 @@ const HELP = [
   ["w", "cycle the time window"],
   ["d", "compact or roomy rows"],
   ["t", "cycle the colour theme"],
-  ["c", "open the sensor chat"],
   ["j / k", "move down or up a table, once it has focus"],
   ["Enter", "open the focused row"],
   ["Esc", "close whatever is open"],
@@ -66,8 +64,7 @@ function cycleWindow() {
 export function mountKeys() {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
-      if (sheet && sheet.open) { sheet.close(); return; }
-      toggleChat(false);
+      if (sheet && sheet.open) sheet.close();
       return;
     }
     if (typing() || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -83,7 +80,6 @@ export function mountKeys() {
       case "w": cycleWindow(); break;
       case "d": setDensity(state.density === "compact" ? "comfortable" : "compact"); break;
       case "t": cycleTheme(); break;
-      case "c": toggleChat(true); break;
       default: break;
     }
   });

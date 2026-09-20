@@ -1,7 +1,7 @@
 """SQLite helpers shared by the insights analytics modules.
 
-Read paths open the database read-only (same convention as the dashboard and
-chat endpoints). Only the intel worker opens read-write.
+Read paths open the database read-only, the same convention the dashboard
+endpoints follow. Only the intel worker opens read-write.
 """
 
 import datetime as dt

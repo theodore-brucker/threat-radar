@@ -13,7 +13,7 @@ because they are bounded by an indexed equality.
 import os
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 
 from app.analytics import asn as asnmod
 from app.analytics import credentials as credmod
@@ -101,9 +101,7 @@ def meta():
         coverage = db.qone(
             con, "SELECT MIN(day) first_day, MAX(day) last_day FROM asn_ip_daily"
         ) or {}
-        chat_enabled = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
-        return ok({"worker": state, "coverage": coverage, "chat": chat_enabled,
-                   "version": "3.6.0"})
+        return ok({"worker": state, "coverage": coverage, "version": "3.7.0"})
     finally:
         con.close()
 
@@ -408,31 +406,3 @@ def funnel(days: int = Query(30, ge=1, le=3650)):
         return ok(data, days)
     finally:
         con.close()
-
-
-# --------------------------------------------------------------------------
-# chat
-# --------------------------------------------------------------------------
-
-@router.get("/api/v1/chat/status")
-def chat_status():
-    try:
-        import chat
-
-        return ok({"enabled": bool(os.environ.get("ANTHROPIC_API_KEY", "").strip()),
-                   "model": getattr(chat, "MODEL", None)})
-    except Exception as exc:
-        return ok({"enabled": False, "model": None, "error": str(exc)})
-
-
-@router.post("/api/v1/chat")
-async def chat_ask(body: dict):
-    try:
-        import chat
-    except Exception as exc:
-        return JSONResponse(status_code=503,
-                            content={"ok": False, "error": f"chat unavailable: {exc}"})
-    result = await chat.answer(body.get("question", ""))
-    if not result.get("ok"):
-        return JSONResponse(status_code=400, content=result)
-    return result
