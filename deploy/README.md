@@ -65,6 +65,19 @@ security headers, so nginx sets none. Denials specific to a deployment, such
 as the sensor's own tailnet address, go in `/etc/nginx/radar-local-deny.conf`,
 which the vhost includes before its allow list.
 
+## nginx service hardening
+
+`deploy/systemd/nginx.service.d/10-hardening.conf` confines the nginx service
+itself, as opposed to the vhost above. It is installed by hand rather than by
+`update.sh`, because that script only manages units it owns and overwriting a
+drop-in for a distribution package is not something a routine deploy should do:
+
+```bash
+sudo install -D -m 644 deploy/systemd/nginx.service.d/10-hardening.conf \
+  /etc/systemd/system/nginx.service.d/10-hardening.conf
+sudo systemctl daemon-reload && sudo systemctl restart nginx
+```
+
 ## Deploying
 
 ```bash

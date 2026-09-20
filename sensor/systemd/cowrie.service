@@ -1,4 +1,9 @@
 # /etc/systemd/system/cowrie.service
+#
+# The drop-in that gates start-up on userdb validity lives beside this file in
+# cowrie.service.d/ and is not repeated here. An earlier copy of this file
+# inlined it as a second [Service] section, which meant installing the file
+# as-is ran the check twice.
 [Unit]
 Description=Cowrie SSH/Telnet honeypot
 After=network-online.target
@@ -14,17 +19,50 @@ Environment=COWRIE_STDOUT=yes
 ExecStart=/opt/cowrie/cowrie-env/bin/cowrie start
 Restart=on-failure
 RestartSec=5
+
+# Hardening. This process exists to be attacked, and it is the one place in
+# the system where hostile input reaches an interpreter by design. It owns
+# nothing it runs: the code, the configuration, the userdb and the forced
+# command all belong to root, and var/ is the only path it can write.
+ReadWritePaths=/opt/cowrie/var
 NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+ProcSubset=pid
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0027
+
+# Second layer behind the nftables egress rules, for the same reason those
+# rules exist: Cowrie fetches attacker-supplied URLs on purpose, its own
+# destination check does not cover the Tailscale range, and it follows
+# redirects after that check runs. The resolver stub is allowed by address,
+# because a blanket loopback denial stops name resolution and with it the
+# sample capture. Adjust the stub address if the host does not use
+# systemd-resolved.
+IPAddressAllow=127.0.0.53/32
+IPAddressDeny=10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 ::1/128 fc00::/7 fe80::/10
+
+# A honeypot should not be able to take the host down by accepting too much.
+MemoryMax=1G
+TasksMax=256
 
 [Install]
 WantedBy=multi-user.target
-
-# /etc/systemd/system/cowrie.service.d/10-validate-userdb.conf
-# A single malformed userdb line stops ALL authentication on this sensor,
-# silently, because Cowrie reloads the file on every auth attempt and an
-# IndexError aborts the whole load. That cost seventeen days in August 2026.
-# Fail to start rather than run with authentication silently dead. Default
-# mode, so only genuinely fatal lines block startup; dead-but-harmless
-# entries are reported and tolerated.
-[Service]
-ExecStartPre=/usr/bin/python3 /opt/cowrie/bin/validate_userdb.py /opt/cowrie/etc/userdb.txt

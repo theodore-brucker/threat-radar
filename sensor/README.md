@@ -51,6 +51,26 @@ blocks the persona paths, so an overlaid checkout cannot commit them back here.
   `txtcmds_path` must be absolute; the shipped default resolves relative to
   WorkingDirectory and misses this tree.
 
+## Ownership on the sensor
+
+The account Cowrie runs as owns `var/` and nothing else. Everything else in
+`/opt/cowrie`, including the patched upstream source, `cowrie.cfg`, the userdb,
+the validator that gates start-up and the forced-command wrapper, belongs to
+root and is readable by the account through group and mode rather than
+ownership.
+
+The reason is specific rather than general hygiene. That account is the process
+attackers are invited to break. If it can write `bin/pull-logs.sh` it decides
+what the collector receives on the next pull. If it can write its own
+`authorized_keys` it can drop the forced command. If it can write
+`bin/validate_userdb.py` it can remove the check that keeps a malformed userdb
+from taking authentication down silently, which has already cost this sensor
+seventeen days once.
+
+`bin/install-ownership.sh` moves an existing install onto that model, and
+`sshd/10-radar.conf.example` shows the matching sshd configuration, with the
+pull key in a root-owned `AuthorizedKeysFile` outside the account's home.
+
 ## Never committed, in either repository
 
 - Canary credentials, wherever they are planted.
