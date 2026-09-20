@@ -1,9 +1,10 @@
 -- 008_excluded_sources.sql  (2026-08-26)
 --
 -- Operator testing is indistinguishable from attacker traffic once it is in
--- raw_events, and on 2026-08-24 it produced a false positive that reached the
--- findings log: manual verification of the honeyfs build was recorded as
--- attackers interacting with persona content.
+-- raw_events, and leaving it in produced a false positive in the findings log.
+-- Addresses to exclude are operator-specific, so they are not committed here.
+-- The intel worker loads them from the file named by TR_EXCLUDED_SOURCES
+-- (default /etc/threat-radar/excluded_sources.txt) after migrations run.
 --
 -- Events are kept, not deleted. Analysis reads v_events instead of raw_events.
 
@@ -12,7 +13,6 @@ CREATE TABLE IF NOT EXISTS excluded_sources (
   reason    TEXT NOT NULL,
   added_at  TEXT NOT NULL
 );
-
 
 DROP VIEW IF EXISTS v_events;
 CREATE VIEW v_events AS

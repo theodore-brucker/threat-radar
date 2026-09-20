@@ -19,16 +19,19 @@ blocks the persona paths, so an overlaid checkout cannot commit them back here.
 
 ## Layout
 
-- `bin/` holds `pull-logs.sh` (forced-command wrapper), `prune-logs.sh`,
-  `validate_userdb.py`, `persona_fs.py`, and `plant_token.sh`.
+- `bin/` holds `pull-logs.sh` (forced-command wrapper), `prune-logs.sh` and
+  `validate_userdb.py`. The persona tooling, `persona_fs.py` and
+  `plant_token.sh`, lives in the private tree with the persona files it acts
+  on, and is overlaid into the same `bin/` before deploy.
 - `patches/` holds local modifications to upstream Cowrie source, which must be
   reapplied after any `git pull` in `/opt/cowrie`.
   `lspci-txtcmds.patch` makes the `lspci` built-in read the operator file,
   since built-ins otherwise win over txtcmds in `getCommand()`.
   `factory-kex.patch` drops configured kex algorithms Twisted does not
   implement, instead of advertising them and dying at key exchange.
-- `systemd/` holds the unit and drop-ins for `cowrie.service`: a hard gate on
-  userdb validity and a warning-only persona filesystem check.
+- `systemd/` holds the unit and its drop-in for `cowrie.service`: a hard gate
+  on userdb validity, which refuses to start rather than run with
+  authentication silently dead.
 - `nftables-radar.nft` redirects 22 to 2222 and confines the Cowrie uid to DNS,
   NTP, 80 and 443 outbound.
 - `persona.example/` holds a sample `cowrie.cfg` overlay, `fs_spec.json` and
@@ -42,7 +45,8 @@ blocks the persona paths, so an overlaid checkout cannot commit them back here.
 - `honeyfs/` supplies file contents only. A path must also exist in
   `var/lib/cowrie/fs.pickle` to be reachable at all.
 - `persona/fs_spec.json` is the declarative filesystem layout applied to
-  `fs.pickle` by `bin/persona_fs.py`, which replaces hand-editing the pickle.
+  `fs.pickle` by the private `bin/persona_fs.py`, which replaces hand-editing
+  the pickle.
 - `share/cowrie/txtcmds/` holds operator-supplied command output.
   `txtcmds_path` must be absolute; the shipped default resolves relative to
   WorkingDirectory and misses this tree.

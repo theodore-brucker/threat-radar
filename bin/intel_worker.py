@@ -19,6 +19,7 @@ import base64
 import datetime as dt
 import fcntl
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -61,6 +62,12 @@ UPLOAD_EVENT = "cowrie.session.file_upload"
 
 RECENT_DAYS = int(os.environ.get("TR_INSIGHTS_RECENT_DAYS", "3"))
 CRED_DAYS = int(os.environ.get("TR_CRED_DAYS", "90"))
+
+# Operator addresses excluded from analysis. Deployment-specific and not
+# committed; see seed_excluded_sources and migration 008.
+EXCLUDED_SOURCES_FILE = os.environ.get(
+    "TR_EXCLUDED_SOURCES", "/etc/threat-radar/excluded_sources.txt"
+)
 
 VT_KEY = os.environ.get("TR_VT_API_KEY", "").strip()
 URLHAUS_KEY = os.environ.get("TR_URLHAUS_AUTH_KEY", "").strip()
@@ -113,6 +120,52 @@ def ensure_schema(con):
         with open(path, "r", encoding="utf-8") as fh:
             con.executescript(fh.read())
         con.commit()
+    seed_excluded_sources(con)
+
+
+def seed_excluded_sources(con):
+    """Load operator addresses to exclude from analysis.
+
+    These are deployment-specific and identify the operator, so they are not
+    committed. Format is one entry per line, an address then a reason:
+
+        198.51.100.7  Operator testing, verified 2026-08-26
+
+    Loading is additive. A line that is removed from the file leaves its row in
+    place and is reported here, because dropping an exclusion silently changes
+    every historical figure the views feed.
+    """
+    path = EXCLUDED_SOURCES_FILE
+    if not os.path.exists(path):
+        return 0
+    wanted = {}
+    with open(path, "r", encoding="utf-8") as fh:
+        for lineno, raw in enumerate(fh, 1):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            ip, _, reason = line.partition(" ")
+            try:
+                ipaddress.ip_address(ip)
+            except ValueError:
+                log(f"excluded_sources: {path}:{lineno} is not an address, skipped")
+                continue
+            wanted[ip] = reason.strip() or "operator source, no reason given"
+
+    now = db.utcnow()
+    for ip, reason in wanted.items():
+        con.execute(
+            "INSERT INTO excluded_sources(ip, reason, added_at) VALUES(?,?,?)"
+            " ON CONFLICT(ip) DO UPDATE SET reason = excluded.reason",
+            (ip, reason, now),
+        )
+    con.commit()
+
+    stale = [r[0] for r in con.execute("SELECT ip FROM excluded_sources").fetchall()
+             if r[0] not in wanted]
+    if stale:
+        log(f"excluded_sources: {len(stale)} row(s) in the database are not in {path}")
+    return len(wanted)
 
 
 def all_days(con, ts):

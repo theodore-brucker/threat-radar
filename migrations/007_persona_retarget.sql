@@ -1,17 +1,17 @@
 -- 007_persona_retarget.sql  (2026-08-26)
 --
--- Both surviving views were keyed to the retired file-transfer persona and
--- would silently report zero now that /opt/retired-persona is gone from the sensor.
+-- Both surviving views were keyed to a retired persona and would silently
+-- report zero once the paths and accounts behind it were gone.
 --
 -- v_cred_attempts: cred_tier tested usernames against a hardcoded list of
--- planted lures for that persona.
--- Retargeted to GPU and HPC compute accounts. Note the meaning has changed:
--- build_userdb.py's PERSONA list is now empty, so nothing is planted, and this
--- tier therefore measures UNSOLICITED targeting of compute accounts rather
--- than hits on lures we advertised. A near-zero reading is a real result.
+-- accounts from the previous persona. Retargeted to GPU and HPC compute
+-- accounts. Note the meaning has changed: build_userdb.py's PERSONA list is
+-- now empty, so nothing is planted, and this tier therefore measures
+-- UNSOLICITED targeting of compute accounts rather than hits on lures we
+-- advertised. A near-zero reading is a real result.
 --
--- v_daily_activity: dropped. Its lure_cmds column counted commands matching
--- '%/opt/retired-persona%', a path that no longer exists, and nothing in app/ reads it.
+-- v_daily_activity: dropped. Its lure_cmds column counted commands against a
+-- path that no longer exists, and nothing in app/ reads it.
 
 DROP VIEW IF EXISTS v_daily_activity;
 DROP VIEW IF EXISTS v_cred_attempts;

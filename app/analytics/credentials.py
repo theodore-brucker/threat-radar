@@ -17,28 +17,31 @@ RULES_PATH = os.environ.get(
     "TR_CRED_RULES", "/opt/threat-radar/config/credential_tags.json"
 )
 
+# Some patterns describe the deployment rather than the attacker: a password
+# built from this sensor's hostname or hardware only means something to the
+# operator, and publishing it tells an actor how to recognise the sensor. Rules
+# in this optional file are appended to the committed set, and its absence is
+# the normal case for anyone running a copy of this project.
+EXTRA_RULES_PATH = os.environ.get(
+    "TR_CRED_RULES_EXTRA", "/etc/threat-radar/credential_tags.local.json"
+)
+
 _CACHE = {"mtime": None, "rules": [], "labels": {}}
 
 
-def load_rules(path: str = None):
-    p = path or RULES_PATH
+def _mtime(path: str):
     try:
-        mtime = os.path.getmtime(p)
+        return os.path.getmtime(path)
     except OSError:
-        return [], {}
-    if _CACHE["mtime"] == mtime:
-        return _CACHE["rules"], _CACHE["labels"]
+        return None
 
-    with open(p, "r", encoding="utf-8") as fh:
-        doc = json.load(fh)
 
-    compiled = []
-    labels = {}
+def _compile(doc, compiled, labels):
     for rule in doc.get("rules", []):
         tag = rule.get("tag")
         if not tag:
             continue
-        labels[tag] = rule.get("label", tag)
+        labels[tag] = rule.get("label", labels.get(tag, tag))
         compiled.append(
             {
                 "tag": tag,
@@ -47,7 +50,32 @@ def load_rules(path: str = None):
                 "either": re.compile(rule["either"], re.I) if rule.get("either") else None,
             }
         )
-    _CACHE.update({"mtime": mtime, "rules": compiled, "labels": labels})
+
+
+def load_rules(path: str = None, extra_path: str = None):
+    p = path or RULES_PATH
+    extra = extra_path or EXTRA_RULES_PATH
+    mtime = _mtime(p)
+    if mtime is None:
+        return [], {}
+    stamp = (mtime, _mtime(extra))
+    if _CACHE["mtime"] == stamp:
+        return _CACHE["rules"], _CACHE["labels"]
+
+    compiled = []
+    labels = {}
+    with open(p, "r", encoding="utf-8") as fh:
+        _compile(json.load(fh), compiled, labels)
+    if stamp[1] is not None:
+        # A broken overlay must not take the committed rules down with it, so
+        # the failure is logged through the caller's empty-rule path instead.
+        try:
+            with open(extra, "r", encoding="utf-8") as fh:
+                _compile(json.load(fh), compiled, labels)
+        except (OSError, ValueError, re.error):
+            pass
+
+    _CACHE.update({"mtime": stamp, "rules": compiled, "labels": labels})
     return compiled, labels
 
 
