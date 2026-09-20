@@ -55,7 +55,10 @@ MIGRATIONS = [
     os.path.join(APP_DIR, "migrations", "012_epoch_labels.sql"),
     os.path.join(APP_DIR, "migrations", "013_contributions.sql"),
 ]
-LOCK_PATH = os.path.join(APP_DIR, ".insights.lock")
+# The service account does not own the repository, so the lock lives in the
+# unit's RuntimeDirectory. The fallback is for a run by hand outside systemd.
+LOCK_DIR = os.environ.get("RUNTIME_DIRECTORY") or os.environ.get("TR_LOCK_DIR") or "/tmp"
+LOCK_PATH = os.path.join(LOCK_DIR.split(":")[0], "insights.lock")
 
 DOWNLOAD_EVENT = "cowrie.session.file_download"
 UPLOAD_EVENT = "cowrie.session.file_upload"
