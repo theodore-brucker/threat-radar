@@ -19,8 +19,12 @@ blocks the persona paths, so an overlaid checkout cannot commit them back here.
 
 ## Layout
 
-- `bin/` holds `pull-logs.sh` (forced-command wrapper), `prune-logs.sh` and
-  `validate_userdb.py`. The persona tooling, `persona_fs.py` and
+- `bin/` holds `pull-logs.sh` (forced-command wrapper), `prune-logs.sh`,
+  `validate_userdb.py` and `cowrie_userdb.py`. The last of those is the one
+  place that describes what Cowrie does with `userdb.txt`: the start-up gate
+  and the generator on the collector both import it, because they used to
+  carry separate copies of those rules and each missed cases the other
+  caught. The persona tooling, `persona_fs.py` and
   `plant_token.sh`, lives in the private tree with the persona files it acts
   on, and is overlaid into the same `bin/` before deploy.
 - `patches/` holds local modifications to upstream Cowrie source, which must be
@@ -75,4 +79,8 @@ pull key in a root-owned `AuthorizedKeysFile` outside the account's home.
 
 - Canary credentials, wherever they are planted.
 - `etc/userdb.txt`, regenerated from observed data by `bin/build_userdb.py`.
+  Install it with that script's `--out`, which writes a temporary file and
+  renames it into place. A shell redirect truncates the live file, and Cowrie
+  re-reads it on every authentication attempt, so a redirect has a window in
+  which the sensor authenticates against half a file.
 - `var/lib/cowrie/fs.pickle`, a ~1.2MB binary rebuilt from the spec.

@@ -10,23 +10,42 @@ honeypot. A hand-written list fixes that but discards most capture volume.
 Allowing the top-N pairs this sensor has really seen keeps the volume and still
 rejects anything novel.
 
-Every candidate line is validated before anything is written. On 2026-07-31 an
-earlier version of this script emitted an entry with an empty password field.
-Cowrie's auth.py does `passwd[0] == ord("!")`, which raises IndexError on empty
-bytes, and because Cowrie reloads userdb.txt on EVERY authentication attempt
-that single line stopped all authentication on the sensor for seventeen days
-while logging nothing at the login stage. The guard below mirrors the sensor's
-bin/validate_userdb.py.
+Every candidate is checked before anything is written, and the rules come from
+sensor/bin/cowrie_userdb.py, which mirrors Cowrie's own parser. This script and
+the sensor's start-up gate used to carry separate copies of those rules and
+each missed cases the other caught.
+
+The check is strict here in a way the gate is not. Every credential in this
+file was chosen by an attacker, and Cowrie reads several kinds of field as
+something other than literal text: /pattern/ compiles as a regular expression,
+"*" matches anything, a leading "!" inverts the entry into a deny rule, and a
+byte above 127 anywhere in the file stops the whole userdb from loading. An
+allow-list built from hostile input should contain literals and nothing else.
+
+On 2026-07-31 an earlier version emitted an entry with an empty password field.
+Cowrie's adduser reads passwd[0], the IndexError aborted the load, and because
+the file is re-read on EVERY authentication attempt the sensor answered no one
+for seventeen days while logging nothing at the login stage.
 
 Usage:
   python3 build_userdb.py --db /opt/threat-radar/data/radar.db --top 3000 \
-      [--allow-root] > userdb.txt
+      [--allow-root] --out /opt/cowrie/etc/userdb.txt
+
+  With no --out the file goes to stdout. With --out it is written to a
+  temporary file in the same directory and renamed into place, because a
+  redirect truncates the live file and Cowrie may read it mid-write.
 """
 import argparse
 import json
+import os
 import sqlite3
 import sys
 from collections import Counter
+
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sensor", "bin"))
+
+import cowrie_userdb as udb  # noqa: E402
 
 # Persona lure credentials. Emptied 2026-08-25 when the earlier file-transfer
 # persona was retired, since its lures belonged to a host this sensor no longer
@@ -35,31 +54,15 @@ from collections import Counter
 PERSONA: "list[tuple[str, str]]" = []
 
 
-def bad_line(login, passwd):
-    """Return a reason string if this pair would break Cowrie, else None."""
-    if not login:
-        return "empty login field"
-    if not passwd:
-        return "empty password field, the fault that broke the sensor 2026-07-31"
-    if passwd.strip() != passwd:
-        return "password has leading or trailing whitespace, will never match"
-    if ":" in login or ":" in passwd:
-        return "colon in a field, would corrupt the three-field format"
-    if any(c in login + passwd for c in ("\n", "\r")):
-        return "embedded newline"
-    if "/" in login or " " in login:
-        return "login contains a space or slash, usually a corrupted line"
-    if login.startswith("userdb"):
-        return "line looks like grep filename output, not a credential"
-    return None
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default="/opt/threat-radar/data/radar.db")
     ap.add_argument("--top", type=int, default=3000)
     ap.add_argument("--allow-root", action="store_true",
                     help="permit root and admin logins")
+    ap.add_argument("--out", metavar="PATH",
+                    help="write here through a temporary file and a rename, "
+                         "instead of to stdout")
     a = ap.parse_args()
 
     con = sqlite3.connect("file:%s?mode=ro" % a.db, uri=True)
@@ -77,7 +80,7 @@ def main():
             continue
         if len(u) >= 64 or len(pw) >= 64:
             continue
-        if bad_line(u, pw):
+        if udb.literal_pair_problem(u, pw):
             continue
         pairs[(u, pw)] += 1
 
@@ -87,7 +90,7 @@ def main():
     ]
     body = []
     if not a.allow_root:
-        body += ["root:x:!*", "admin:x:!*"]
+        body += [udb.format_deny("root"), udb.format_deny("admin")]
 
     n, seen = 0, set()
     for (u, pw), _count in pairs.most_common():
@@ -96,34 +99,37 @@ def main():
         if (u, pw) in seen:
             continue
         seen.add((u, pw))
-        body.append("%s:x:%s" % (u, pw))
+        body.append(udb.format_pair(u, pw))
         n += 1
         if n >= a.top:
             break
     for u, pw in PERSONA:
         if (u, pw) not in seen:
-            body.append("%s:x:%s" % (u, pw))
+            body.append(udb.format_pair(u, pw))
 
-    # Refuse to emit anything at all if a single line would break Cowrie.
-    problems = []
-    for i, line in enumerate(body, 1):
-        if line.endswith(":x:!*"):
-            continue
-        parts = line.split(":", 2)
-        if len(parts) != 3:
-            problems.append((i, line, "not three colon-separated fields"))
-            continue
-        why = bad_line(parts[0], parts[2])
-        if why:
-            problems.append((i, line, why))
-    if problems:
-        sys.stderr.write("REFUSING TO WRITE: %d bad line(s)\n" % len(problems))
-        for i, line, why in problems[:10]:
-            sys.stderr.write("  line %d: %s\n    %r\n" % (i, why, line))
+    # Refuse to emit anything at all if one line would break Cowrie. The check
+    # runs over the rendered bytes rather than the pairs, so it also catches a
+    # fault introduced by the rendering itself.
+    rendered = "\n".join(header + body) + "\n"
+    usable, findings = udb.check_file(rendered.encode("utf-8", "surrogateescape"))
+    if findings:
+        sys.stderr.write("REFUSING TO WRITE: %d problem line(s)\n" % len(findings))
+        for number, severity, text, why in findings[:10]:
+            sys.stderr.write("  %s line %d: %s\n    %r\n"
+                             % (severity, number, why, text))
         return 2
 
-    print("\n".join(header + body))
-    sys.stderr.write("wrote %d observed + %d persona entries, all validated\n"
+    if a.out:
+        tmp = a.out + ".tmp"
+        with open(tmp, "w", encoding="ascii") as fh:
+            fh.write(rendered)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, a.out)
+        sys.stderr.write("wrote %s, %d usable line(s)\n" % (a.out, usable))
+    else:
+        sys.stdout.write(rendered)
+    sys.stderr.write("%d observed + %d persona entries, all validated\n"
                      % (n, len(PERSONA)))
     return 0
 
