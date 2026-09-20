@@ -8,7 +8,7 @@ Over 1.4 million events from 4,600+ distinct source addresses in the current ret
 
 ```
 Internet ──> Hetzner VPS (Cowrie honeypot, nftables redirect 22 -> 2222)
-                 │  logs pulled over Tailscale every 30s
+                 │  logs pulled over Tailscale every 120s
                  ▼
              Raspberry Pi 5
                  ├─ ingest.py      idempotent JSON -> SQLite (WAL)
@@ -19,7 +19,7 @@ Internet ──> Hetzner VPS (Cowrie honeypot, nftables redirect 22 -> 2222)
                  └─ FastAPI + nginx dashboard (LAN only)
 ```
 
-The sensor is disposable and untrusted. It holds no credentials to anything, the pull channel uses a forced-command SSH key that can only stream logs and fetch samples by hash, and all analysis happens on the Pi. Attack traffic never touches the network the dashboard lives on.
+The sensor is disposable and treated as untrusted. It holds no credentials for the Pi, the pull runs in the other direction over a forced-command SSH key that can only stream logs and fetch samples by hash, and all analysis happens on the Pi. Everything the Pi accepts from the sensor is parsed as hostile input.
 
 ## The escalation model
 
@@ -41,13 +41,11 @@ Single-page app, vanilla JS, no build step, no CDN. One API surface at `/api/v1`
 
 - **Overview**: headline numbers, escalation rail, world map, volume chart with sensor outages drawn as labeled gaps rather than averaged into trends
 - **Sources**: per-IP escalation, ASN abuse scoring that separates dedicated scanning boxes from noisy residential networks, SSH client fingerprints
-- **Credentials**: campaign clustering that collapses 15k raw credential pairs into named campaigns via rule-based tagging
+- **Credentials**: rule-based tagging that collapses 15k raw credential pairs into a few dozen themes
 - **Payloads**: capture-to-contribution funnel with VirusTotal and URLhaus standing for every hash, including samples this sensor was first to submit
 - **Sessions**: per-session timelines and sample inspection with ELF header parsing, entropy analysis, and packer detection
 - **Tunnels**: what attackers wanted the box for, inferred from direct-tcpip forwarding requests
 - **Method**: how the pipeline works, for visitors who want the engineering
-
-An optional chat box answers questions about the data through the Anthropic API, grounded in read-only queries against the same database the dashboard reads.
 
 ## Design constraints
 
@@ -88,3 +86,8 @@ MalwareBazaar submission (`test_bazaar`), VirusTotal snapshots and refresh
 cadence (`test_snapshots`), durable capture context (`test_provenance`),
 contribution attribution and counts (`test_contributions`), and the API
 surface (`test_api`).
+
+## Licence
+
+MIT, see LICENSE. Bundled fonts and vendor data keep their own terms, listed in
+THIRD_PARTY.md.
