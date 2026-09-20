@@ -1,3 +1,15 @@
+# Sensor packet filter. Port 22 is redirected to Cowrie on 2222, and the
+# Cowrie uid is confined on the way out.
+#
+# The output chain is the part worth reading. Cowrie fetches attacker-supplied
+# URLs on purpose, which is how samples are captured, and its own destination
+# check blocks loopback, link-local and RFC1918 but not the Tailscale range,
+# and runs before redirects are followed. Without the drops below, anything
+# typed into the fake shell could reach the tailnet and the cloud metadata
+# service. Nothing internal is ever a legitimate destination for this uid.
+#
+# Substitute the uid of the account Cowrie runs as if it is not 999.
+
 table inet radar {
 	chain input {
 		type filter hook input priority filter; policy drop;
@@ -16,8 +28,20 @@ table inet radar {
 	chain output {
 		type filter hook output priority filter; policy accept;
 		meta skuid 999 ct state established,related accept
+
+		# DNS goes to the systemd-resolved stub, so it has to be allowed by
+		# address before the loopback range is dropped below.
+		meta skuid 999 ip daddr 127.0.0.53 udp dport 53 accept
+		meta skuid 999 ip daddr 127.0.0.53 tcp dport 53 accept
+
+		meta skuid 999 oifname "tailscale0" drop
+		meta skuid 999 ip daddr { 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16 } drop
+		meta skuid 999 ip6 daddr { ::1, fc00::/7, fe80::/10 } drop
+
 		meta skuid 999 udp dport { 53, 123 } accept
 		meta skuid 999 tcp dport 53 accept
+		# Package and git traffic shares this rule. Tighten it to the
+		# repository addresses if the sensor is not updated by hand.
 		meta skuid 999 tcp dport { 80, 443 } accept
 		meta skuid 999 drop
 	}
