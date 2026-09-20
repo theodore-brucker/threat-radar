@@ -1,0 +1,50 @@
+[Unit]
+Description=Pull Cowrie logs from the sensor
+
+[Service]
+Type=oneshot
+User=radar
+Group=radar
+WorkingDirectory=/opt/threat-radar
+EnvironmentFile=/etc/threat-radar/pull.env
+ExecStart=/opt/threat-radar/pull.sh
+# RuntimeMaxSec has no effect on a oneshot unit, which is what the installed
+# copy used, so nothing has been bounding a stalled pull. TimeoutStartSec is
+# the setting that applies here.
+TimeoutStartSec=90
+# The lock lives here rather than in the repo, which the service account no
+# longer owns. pull.sh reads RUNTIME_DIRECTORY and falls back to /tmp when it
+# is run by hand.
+RuntimeDirectory=threat-radar
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+
+# Hardening. Everything this receives comes from a host that is meant to be
+# attacked, so it writes only to the spool it unpacks into. The known-hosts
+# file is writable because the transport still accepts a first-seen host key;
+# that becomes StrictHostKeyChecking=yes when the pull protocol is reworked.
+ReadWritePaths=/opt/threat-radar/spool /opt/threat-radar/.ssh_known_hosts
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+ProcSubset=pid
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0027

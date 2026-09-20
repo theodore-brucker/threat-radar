@@ -1,0 +1,52 @@
+[Unit]
+Description=Threat Radar ingester
+After=network-online.target
+Wants=network-online.target
+# Restart=always at the default interval turned a six minute VACUUM
+# contention window into 382 silent restarts while systemd still reported the
+# unit as active. Back off, and give up loudly after sustained failure so the
+# unit lands in a failed state that can be seen.
+StartLimitIntervalSec=600
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=radar
+Group=radar
+WorkingDirectory=/opt/threat-radar
+Environment=TR_BASE=/opt/threat-radar
+ExecStart=/opt/threat-radar/venv/bin/python /opt/threat-radar/ingest.py
+Restart=always
+RestartSec=10
+
+# Hardening. This process parses attacker-controlled JSON, so it gets no
+# network, no privileges it can raise, and one writable path.
+ReadWritePaths=/opt/threat-radar/data
+IPAddressDeny=any
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+ProcSubset=pid
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_UNIX
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

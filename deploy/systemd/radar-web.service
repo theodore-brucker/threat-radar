@@ -1,0 +1,53 @@
+[Unit]
+Description=Threat Radar dashboard
+After=radar-ingest.service
+StartLimitIntervalSec=600
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=radar
+Group=radar
+WorkingDirectory=/opt/threat-radar
+Environment=TR_BASE=/opt/threat-radar
+EnvironmentFile=-/etc/threat-radar/web.env
+ExecStart=/opt/threat-radar/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080
+Restart=always
+RestartSec=10
+
+# Hardening. The dashboard serves attacker-derived strings and reads sample
+# files, so it is the process most worth confining. It talks to nothing but
+# the loopback socket nginx proxies to. The data directory has to stay
+# writable even though every query is read-only, because a WAL reader writes
+# the shared-memory index; the read-only guarantee is the mode=ro URI in
+# app/analytics/db.py, not the filesystem.
+ReadWritePaths=/opt/threat-radar/data
+IPAddressAllow=localhost
+IPAddressDeny=any
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+ProcSubset=pid
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

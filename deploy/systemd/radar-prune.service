@@ -1,0 +1,47 @@
+[Unit]
+Description=Threat Radar retention pruner
+
+[Service]
+Type=oneshot
+User=radar
+Group=radar
+WorkingDirectory=/opt/threat-radar
+Environment=TR_BASE=/opt/threat-radar
+# Raw events are kept for a month. The per-day fact tables are what make a
+# window wider than that show anything, so they are kept indefinitely and the
+# value below is a ceiling in name only. The size cap is the safety net for a
+# spike that fills the card before the day boundary arrives, and it sits above
+# a month of current traffic so that the age cap is what normally applies.
+Environment=TR_RETAIN_DAYS=30
+Environment=TR_ROLLUP_RETAIN_DAYS=36500
+Environment=TR_MAX_DB_MB=4096
+Environment=TR_SPOOL_RETAIN_DAYS=3
+ExecStart=/opt/threat-radar/venv/bin/python /opt/threat-radar/prune.py
+TimeoutStartSec=1800
+
+ReadWritePaths=/opt/threat-radar/data /opt/threat-radar/spool
+IPAddressDeny=any
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+ProcSubset=pid
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_UNIX
+UMask=0027

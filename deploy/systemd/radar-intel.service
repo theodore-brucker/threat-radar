@@ -1,0 +1,68 @@
+[Unit]
+Description=Threat Radar insights worker (fact tables, spike attribution, payload reputation)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=radar
+Group=radar
+WorkingDirectory=/opt/threat-radar
+EnvironmentFile=-/etc/threat-radar/intel.env
+Environment=TR_APP=/opt/threat-radar
+Environment=TR_DB=/opt/threat-radar/data/radar.db
+Environment=TR_CRED_RULES=/opt/threat-radar/config/credential_tags.json
+Environment=TR_SAMPLE_DIR=/opt/threat-radar/data/samples
+Environment=TR_INSIGHTS_RECENT_DAYS=3
+Environment=TR_INTEL_TTL_DAYS=7
+Environment=TR_VT_MAX_LOOKUPS=40
+Environment=TR_VT_DAILY_CAP=400
+Environment=TR_VT_SUBMIT_MAX=5
+Environment=TR_URLHAUS_MAX_LOOKUPS=150
+# Sample collection runs first and its failure is tolerated, because the
+# analytics run is still worth doing without new samples. That also means a
+# failure here is invisible in the unit state, which the health endpoint is
+# what covers.
+ExecStartPre=-/opt/threat-radar/bin/fetch_samples.sh
+ExecStart=/opt/threat-radar/venv/bin/python /opt/threat-radar/bin/intel_worker.py
+# Rollups are rebuilt from v_events but the tables themselves accumulate, so
+# a source added to excluded_sources survives in anything already aggregated.
+# The purge must run after the rebuild, not before.
+ExecStartPost=/bin/sh -c '/usr/bin/sqlite3 /opt/threat-radar/data/radar.db < /opt/threat-radar/bin/purge_excluded.sql'
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=3600
+RuntimeDirectory=threat-radar
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+
+# Hardening. This is the only unit that needs the internet, for VirusTotal,
+# URLhaus and MalwareBazaar, and for the sample fetch over the tailnet.
+ReadWritePaths=/opt/threat-radar/data
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+ProcSubset=pid
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

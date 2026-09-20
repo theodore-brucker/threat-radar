@@ -18,7 +18,7 @@ Work top to bottom. Each fenced block is copy-paste as-is unless it says to edit
 
 ---
 
-## PART A — VPS sensor
+## PART A: VPS sensor
 
 Provision the box first (Oracle Cloud Always Free ARM, or a ~$4/mo Hetzner CX22).
 Ubuntu 24.04. When creating it, in the provider's firewall/security-list **allow
@@ -33,7 +33,7 @@ sudo apt-get update && sudo apt-get -y upgrade
 sudo apt-get -y install curl nftables python3-venv python3-pip git authbind unattended-upgrades
 sudo systemctl enable --now unattended-upgrades
 
-# Tailscale — management plane, keeps admin SSH off the public internet
+# Tailscale, the management plane, keeps admin SSH off the public internet
 curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up --ssh
 tailscale ip -4          # note this VPS tailnet IP, e.g. 100.x.y.z
@@ -118,49 +118,37 @@ sleep 5 && sudo systemctl status cowrie --no-pager | head -5
 ### A4. Firewall + egress lockdown (nftables)
 
 Default-deny inbound except the honeypot and the tailnet. Egress is allow-listed
-by the `cowrie` UID: DNS/NTP/package repos only. If the emulation is ever escaped,
-the box **cannot** scan, DDoS, or pivot outward — this is what keeps your provider
-account clean.
+by the `cowrie` UID: DNS, NTP and outbound web only, so that a process which
+escapes the emulation cannot scan, flood or pivot. The outbound rules also
+block the internal ranges, which matters more than it looks: Cowrie fetches
+attacker-supplied URLs by design, its own destination check does not cover the
+Tailscale range, and it follows redirects after that check runs.
+
+The ruleset is versioned at `sensor/nftables-radar.nft`. Install it, adjusting
+the uid in the file first if Cowrie does not run as 999:
 
 ```bash
-COWRIE_UID=$(id -u cowrie)
-sudo tee /etc/nftables.conf >/dev/null <<EOF
-#!/usr/sbin/nft -f
-flush ruleset
-
-table inet radar {
-  chain input {
-    type filter hook input priority 0; policy drop;
-    ct state established,related accept
-    iif "lo" accept
-    iifname "tailscale0" accept
-    ip protocol icmp accept
-    tcp dport 22 accept        # honeypot (redirected to 2222)
-    tcp dport 2222 accept
-    # tcp dport 23 accept      # uncomment to also run Telnet honeypot
-  }
-  chain forward { type filter hook forward priority 0; policy drop; }
-
-  chain output {
-    type filter hook output priority 0; policy accept;
-    # Restrict what the cowrie user may reach outbound
-    meta skuid ${COWRIE_UID} ct state established,related accept
-    meta skuid ${COWRIE_UID} udp dport { 53, 123 } accept
-    meta skuid ${COWRIE_UID} tcp dport 53 accept
-    meta skuid ${COWRIE_UID} tcp dport { 80, 443 } accept  # package/git; tighten to repo IPs if desired
-    meta skuid ${COWRIE_UID} drop
-  }
-
-  chain prerouting {
-    type nat hook prerouting priority -100;
-    tcp dport 22 redirect to :2222
-    # tcp dport 23 redirect to :2223
-  }
-}
-EOF
+id -u cowrie                      # confirm the uid the rules assume
+sudo cp sensor/nftables-radar.nft /etc/nftables.d/radar.nft 2>/dev/null \
+  || sudo tee -a /etc/nftables.conf < sensor/nftables-radar.nft >/dev/null
+sudo nft -c -f /etc/nftables.conf
 sudo systemctl enable --now nftables
-sudo nft -f /etc/nftables.conf
-sudo nft list ruleset | head -20
+sudo nft list table inet radar
+```
+
+On a host where `/etc/nftables.conf` starts with `flush ruleset`, reload with
+care: that line removes the tables other software manages, including the ones
+Tailscale installs, which will cut an SSH session that arrived over the
+tailnet. Applying only this table with `nft -f` on the table file, or a reboot,
+avoids that.
+
+Verify the confinement from the sensor, as root. The first three should be
+blocked and the last should succeed:
+
+```bash
+for t in http://169.254.169.254/ http://<pi-tailnet-ip>/ http://100.100.100.100/ https://example.com/; do
+  printf '%s  %s\n' "$(sudo -u cowrie curl -s -m 5 -o /dev/null -w '%{http_code}' "$t")" "$t"; done
+sudo -u cowrie getent hosts example.com
 ```
 
 ### A5. Confirm it's catching traffic
@@ -175,9 +163,9 @@ Leave it. Move to the Pi.
 
 ---
 
-## PART B — Pi analytics
+## PART B: Pi analytics
 
-On the Pi (also joined to the same tailnet). Get the app files onto it — clone your
+On the Pi (also joined to the same tailnet). Get the app files onto it: clone your
 repo, or `scp` the `threat-radar/` directory. Assume it lands at `~/threat-radar`.
 
 ### B1. Install to /opt and create the venv
@@ -243,23 +231,10 @@ sudo chown radar:radar /opt/threat-radar/pull.sh
 Timer:
 
 ```bash
-sudo tee /etc/systemd/system/radar-pull.service >/dev/null <<'EOF'
-[Unit]
-Description=Pull Cowrie logs from sensor
-[Service]
-Type=oneshot
-User=radar
-ExecStart=/opt/threat-radar/pull.sh
-EOF
-sudo tee /etc/systemd/system/radar-pull.timer >/dev/null <<'EOF'
-[Unit]
-Description=Pull Cowrie logs every 30s
-[Timer]
-OnBootSec=30
-OnUnitActiveSec=30
-[Install]
-WantedBy=timers.target
-EOF
+sudo install -m 644 deploy/systemd/radar-pull.service deploy/systemd/radar-pull.timer \
+  /etc/systemd/system/
+sudo install -d -m 755 /etc/threat-radar
+printf 'SENSOR_TS_IP=<vps-tailnet-ip>\n' | sudo tee /etc/threat-radar/pull.env >/dev/null
 sudo systemctl daemon-reload && sudo systemctl enable --now radar-pull.timer
 ```
 
@@ -283,51 +258,26 @@ ls -la /var/lib/GeoIP/     # expect GeoLite2-City.mmdb, GeoLite2-ASN.mmdb
 
 ### B5. Services: ingest, enrich, dashboard
 
+The unit files live in `deploy/systemd/` and are installed from there, so the
+deployed configuration stays reviewable and can be rebuilt from the
+repository. Each one is confined to the paths and network it actually needs;
+`deploy/README.md` explains the ownership model they assume.
+
 ```bash
-sudo tee /etc/systemd/system/radar-ingest.service >/dev/null <<'EOF'
-[Unit]
-Description=Threat Radar ingester
-After=network-online.target
-[Service]
-User=radar
-Environment=TR_BASE=/opt/threat-radar
-ExecStart=/opt/threat-radar/venv/bin/python /opt/threat-radar/ingest.py
-Restart=always
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo tee /etc/systemd/system/radar-enrich.service >/dev/null <<'EOF'
-[Unit]
-Description=Threat Radar enricher
-After=radar-ingest.service
-[Service]
-User=radar
-Environment=TR_BASE=/opt/threat-radar
-ExecStart=/opt/threat-radar/venv/bin/python /opt/threat-radar/enrich.py
-Restart=always
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo tee /etc/systemd/system/radar-web.service >/dev/null <<'EOF'
-[Unit]
-Description=Threat Radar dashboard
-After=radar-ingest.service
-[Service]
-User=radar
-Environment=TR_BASE=/opt/threat-radar
-ExecStart=/opt/threat-radar/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080
-WorkingDirectory=/opt/threat-radar
-Restart=always
-[Install]
-WantedBy=multi-user.target
-EOF
-
+sudo /opt/threat-radar/deploy/install-ownership.sh
+sudo install -m 644 /opt/threat-radar/deploy/systemd/radar-ingest.service \
+  /opt/threat-radar/deploy/systemd/radar-enrich.service \
+  /opt/threat-radar/deploy/systemd/radar-web.service \
+  /opt/threat-radar/deploy/systemd/radar-intel.service \
+  /opt/threat-radar/deploy/systemd/radar-intel.timer \
+  /opt/threat-radar/deploy/systemd/radar-prune.service \
+  /opt/threat-radar/deploy/systemd/radar-prune.timer \
+  /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now radar-ingest radar-enrich radar-web
+sudo systemctl enable --now radar-intel.timer radar-prune.timer
 sleep 3
-curl -s http://127.0.0.1:8080/api/summary; echo
+curl -s http://127.0.0.1:8080/api/v1/meta; echo
 ```
 
 You should see JSON counts climbing as logs flow in.
@@ -336,7 +286,7 @@ You should see JSON counts climbing as logs flow in.
 
 - **Just you / interviews:** browse to `http://<pi-tailnet-ip>:8080` from any device
   on your tailnet. Nothing exposed publicly.
-- **Public URL (optional, still no router changes):** free Cloudflare Tunnel —
+- **Public URL (optional, still no router changes):** free Cloudflare Tunnel,
   `cloudflared tunnel --url http://127.0.0.1:8080` for a quick link, or a named
   tunnel on your own domain for `radar.theobrucker.us`.
 
@@ -358,11 +308,11 @@ sudo -u radar sqlite3 /opt/threat-radar/data/radar.db \
 
 - **Attribution honesty.** A residential-grade honeypot catches commodity botnets
   and mass scanners, not nation-state APTs. The dashboard footer already frames
-  origins as telemetry, not confirmed attribution. Keep it that way — it reads as
+  origins as telemetry, not confirmed attribution. Keep it that way, because it reads as
   competence, not the reverse.
 - **Rebuild cheaply.** Part A is short enough to re-run from zero if the free VPS
   gets reclaimed. Nothing on the sensor is precious; the data lives on the Pi.
 - **Extending enrichment.** GreyNoise Community, AbuseIPDB, and VirusTotal (on the
   payload hashes Cowrie captures) slot into `enrich.py` alongside the GeoLite2
-  lookups — same batch loop, add rate-limit-aware queuing for the free tiers.
+  lookups, using the same batch loop with rate-limit-aware queuing for the free tiers.
 ```
