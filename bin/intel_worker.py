@@ -581,17 +581,29 @@ def _spend(con, source, n=1):
     con.commit()
 
 
+USER_AGENT = "threat-radar/1.0 (+https://github.com/theodore-brucker/threat-radar)"
+
+
+def _decode(status, raw):
+    """Parse a JSON body. A body that is not JSON keeps its real status and a
+    slice of the raw text, instead of being reported as a network failure."""
+    text = raw.decode("utf-8", "replace")
+    try:
+        return status, json.loads(text)
+    except ValueError:
+        return status, {"error": "non-json response",
+                        "raw": text[:400] if text.strip() else "(empty body)"}
+
+
 def _http(url, headers=None, data=None):
-    req = urllib.request.Request(url, data=data, headers=headers or {})
+    hdrs = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+    hdrs.update(headers or {})
+    req = urllib.request.Request(url, data=data, headers=hdrs)
     try:
         with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
-            return resp.status, json.loads(resp.read().decode("utf-8", "replace"))
+            return _decode(resp.status, resp.read())
     except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", "replace")
-        try:
-            return e.code, json.loads(body)
-        except ValueError:
-            return e.code, {"error": body[:400]}
+        return _decode(e.code, e.read())
     except Exception as e:  # network down, DNS, TLS, timeout
         return 0, {"error": str(e)}
 
@@ -1152,6 +1164,8 @@ def submit_bazaar(con):
         _spend(con, "mb")
         budget -= 1
         qs = resp.get("query_status") if isinstance(resp, dict) else None
+        if qs is None and "inserted" in str(resp.get("raw", "")):
+            qs = "inserted"
         link = f"https://bazaar.abuse.ch/sample/{sha}/"
         if status == 200 and qs == "inserted":
             _record_submission(con, sha, "submitted", permalink=link,
@@ -1163,7 +1177,7 @@ def submit_bazaar(con):
                           permalink=link, size=size)
         else:
             _record_submission(con, sha, "error", service="malwarebazaar",
-                               detail=f"http {status}: {qs or str(resp)[:200]}",
+                               detail=f"http {status}: {qs or str(resp)[:400]}",
                                size=size)
             log(f"bazaar: {sha[:16]} failed http {status} {qs}")
         time.sleep(2)
