@@ -7,10 +7,11 @@ idempotent for the days it touches.
 
   intel_worker.py                     full pass (build + enrich)
   intel_worker.py --only payloads     one stage
-  intel_worker.py --no-network        skip VirusTotal and URLhaus
+  intel_worker.py --no-network        skip VirusTotal, URLhaus and MalwareBazaar
   intel_worker.py --backfill-all      rebuild every day, not just recent ones
 
-Stages: facts, sessions, tunnels, payloads, credentials, spikes, intel
+Stages: facts, sessions, tunnels, payloads, credentials, spikes, intel,
+submit (VirusTotal), bazaar (MalwareBazaar)
 """
 
 import argparse
@@ -74,6 +75,19 @@ MIN_SAMPLE_BYTES = int(os.environ.get("TR_SAMPLE_MIN_BYTES", "64"))
 URLHAUS_MAX = int(os.environ.get("TR_URLHAUS_MAX_LOOKUPS", "150"))
 INTEL_TTL_DAYS = int(os.environ.get("TR_INTEL_TTL_DAYS", "7"))
 HTTP_TIMEOUT = 20
+
+# MalwareBazaar uses the same unified abuse.ch Auth-Key as URLhaus, so it falls
+# back to that key when no dedicated one is set. Uploads are attributed to the
+# key's account unless TR_MB_ANONYMOUS=1.
+MB_KEY = os.environ.get("TR_MB_AUTH_KEY", "").strip() or URLHAUS_KEY
+MB_API = "https://mb-api.abuse.ch/api/v1/"
+MB_SUBMIT_MAX = int(os.environ.get("TR_MB_SUBMIT_MAX", "5"))
+MB_DAILY_CAP = int(os.environ.get("TR_MB_DAILY_CAP", "100"))
+MB_ANONYMOUS = os.environ.get("TR_MB_ANONYMOUS", "0").strip() == "1"
+# MalwareBazaar's submission policy asks for confirmed malware no older than
+# about ten days. Both are enforced as gates, not preferences.
+MB_MAX_AGE_DAYS = int(os.environ.get("TR_MB_MAX_AGE_DAYS", "10"))
+MB_MIN_DETECTIONS = int(os.environ.get("TR_MB_MIN_DETECTIONS", "1"))
 
 
 def log(msg):
@@ -792,7 +806,7 @@ def enrich(con):
 
 
 # ---------------------------------------------------------------------------
-# stage: submit unknown samples to VirusTotal
+# submission helpers shared by the VirusTotal and MalwareBazaar stages
 # ---------------------------------------------------------------------------
 
 DRY_RUN_SUBMIT = False
@@ -815,14 +829,28 @@ def _multipart(fields, filename, payload):
 
 
 def _record_submission(con, sha, status, analysis_id=None, permalink=None,
-                       detail=None, size=None):
+                       detail=None, size=None, service="virustotal"):
     con.execute(
         """
         INSERT OR REPLACE INTO payload_submissions
           (sha256, service, status, analysis_id, permalink, detail, size_bytes, submitted_at)
         VALUES(?,?,?,?,?,?,?,?)
         """,
-        (sha, "virustotal", status, analysis_id, permalink, detail, size, db.utcnow()),
+        (sha, service, status, analysis_id, permalink, detail, size, db.utcnow()),
+    )
+    con.commit()
+
+
+def _record_known(con, sha, service, detail, permalink=None, size=None):
+    """Record that a service already held this hash when we first checked.
+    INSERT OR IGNORE, so it can never overwrite a row saying we submitted it."""
+    con.execute(
+        """
+        INSERT OR IGNORE INTO payload_submissions
+          (sha256, service, status, permalink, detail, size_bytes, submitted_at)
+        VALUES(?,?,'duplicate',?,?,?,?)
+        """,
+        (sha, service, permalink, detail, size, db.utcnow()),
     )
     con.commit()
 
@@ -839,6 +867,34 @@ def _sample_path(sha):
     return None
 
 
+# ---------------------------------------------------------------------------
+# stage: submit unknown samples to VirusTotal
+# ---------------------------------------------------------------------------
+
+def _backfill_vt_known(con):
+    """Give every hash VirusTotal already knew a 'duplicate' row. Before this,
+    only hashes the worker acted on were recorded, which hid the 'identified'
+    stage of the contribution funnel. No network calls: it reads verdicts the
+    intel stage already stored."""
+    cur = con.execute(
+        """
+        INSERT OR IGNORE INTO payload_submissions
+          (sha256, service, status, permalink, detail, submitted_at)
+        SELECT i.indicator, 'virustotal', 'duplicate', i.reference,
+               'already in VirusTotal when checked',
+               COALESCE(i.checked_at, ?)
+        FROM payload_intel i
+        WHERE i.source = 'virustotal' AND i.kind = 'sha256'
+          AND i.verdict NOT IN ('unknown', 'error')
+        """,
+        (db.utcnow(),),
+    )
+    con.commit()
+    if cur.rowcount:
+        log(f"submit: recorded {cur.rowcount} hash(es) VirusTotal already held")
+    return cur.rowcount
+
+
 def submit_samples(con):
     """Upload captured samples that VirusTotal has never seen.
 
@@ -846,6 +902,7 @@ def submit_samples(con):
     in their corpus is re-uploaded. Uploads count against the same 500/day
     public quota as lookups and are spent from the same counter.
     """
+    _backfill_vt_known(con)
     if not VT_KEY:
         log("submit: no TR_VT_API_KEY, skipping")
         return 0
@@ -937,11 +994,191 @@ def submit_samples(con):
     log(f"submit: {sent} upload(s) this run")
     return sent
 
+
+# ---------------------------------------------------------------------------
+# stage: submit confirmed samples to MalwareBazaar
+# ---------------------------------------------------------------------------
+
+def _mb_tags(blob):
+    tags = ["honeypot", "cowrie", "ssh"]
+    if blob[:4] == b"\x7fELF":
+        tags.append("elf")
+    elif blob[:2] == b"#!" and b"sh" in blob[:64].split(b"\n", 1)[0]:
+        tags.append("sh")
+    return tags
+
+
+def _mb_comment(first_day, via_url, via_upload):
+    """Context for the MalwareBazaar entry. Deliberately limited to date and
+    delivery method: nothing that identifies the sensor or its persona."""
+    if via_url:
+        how = "fetched from a URL (wget/curl) inside the session"
+    elif via_upload:
+        how = "pushed over SFTP/SCP"
+    else:
+        how = "written in-band during the session"
+    return f"Captured by an SSH honeypot, first seen {first_day} UTC, {how}."
+
+
+def _mb_lookup(con, sha):
+    """Returns 'known', 'unknown' or 'error'. A hit is also stored in
+    payload_intel so the family derivation can use MalwareBazaar's signature."""
+    data = urllib.parse.urlencode({"query": "get_info", "hash": sha}).encode()
+    status, body = _http(MB_API, headers={"Auth-Key": MB_KEY}, data=data)
+    ref = f"https://bazaar.abuse.ch/sample/{sha}/"
+    if status != 200:
+        return "error", f"http {status}: {str(body)[:160]}"
+    qs = body.get("query_status")
+    if qs == "hash_not_found":
+        return "unknown", None
+    if qs != "ok":
+        return "error", str(qs)[:160]
+    entry = (body.get("data") or [{}])[0]
+    sig = entry.get("signature")
+    _save_intel(con, sha, "sha256", "malwarebazaar", "malicious", None,
+                sig or entry.get("file_type"), ref,
+                {"reporter": entry.get("reporter"),
+                 "first_seen": entry.get("first_seen"),
+                 "tags": entry.get("tags")})
+    return "known", sig
+
+
+def submit_bazaar(con):
+    """Upload samples to MalwareBazaar under the account that owns the key.
+
+    Eligible samples are on this host, inside the size bounds, first seen
+    within TR_MB_MAX_AGE_DAYS, and flagged by at least TR_MB_MIN_DETECTIONS
+    VirusTotal engines. Each is checked by hash first so nothing already in
+    the corpus is re-uploaded. Age and size failures are permanent and get a
+    'skipped' row; a detection shortfall is not, because the VirusTotal score
+    can still rise, so those are left to be re-evaluated on later runs.
+    """
+    if not MB_KEY:
+        log("bazaar: no TR_MB_AUTH_KEY or TR_URLHAUS_AUTH_KEY, skipping")
+        return 0
+    if not os.path.isdir(SAMPLE_DIR):
+        log(f"bazaar: sample directory {SAMPLE_DIR} missing, run bin/fetch_samples.sh")
+        return 0
+
+    rows = db.qall(
+        con,
+        """
+        SELECT p.shasum AS sha,
+               MIN(p.first_seen) AS first_seen,
+               MAX(p.url <> '') AS via_url,
+               MAX(p.direction = 'upload') AS via_upload,
+               COALESCE(MAX(i.malicious), 0) AS malicious
+        FROM payloads p
+        LEFT JOIN payload_intel i
+          ON i.indicator = p.shasum AND i.source = 'virustotal' AND i.kind = 'sha256'
+        WHERE p.shasum <> ''
+          AND NOT EXISTS (
+            SELECT 1 FROM payload_submissions s
+            WHERE s.sha256 = p.shasum AND s.service = 'malwarebazaar'
+                  AND s.status IN ('submitted','duplicate','skipped')
+          )
+        GROUP BY p.shasum
+        ORDER BY first_seen DESC
+        """,
+    )
+    today = dt.datetime.now(dt.timezone.utc).date()
+    budget = _remaining(con, "mb", MB_SUBMIT_MAX, MB_DAILY_CAP)
+    log(f"bazaar: {len(rows)} unrecorded hash(es), budget {budget}")
+
+    sent = waiting = 0
+    for row in rows:
+        sha = row["sha"]
+        first_day = str(row["first_seen"] or "")[:10]
+        try:
+            age = (today - dt.date.fromisoformat(first_day)).days
+        except ValueError:
+            age = None
+        if age is None or age > MB_MAX_AGE_DAYS:
+            _record_submission(con, sha, "skipped", service="malwarebazaar",
+                               detail=f"first seen {first_day or 'unknown'}, "
+                                      f"outside the {MB_MAX_AGE_DAYS}-day window")
+            continue
+        path = _sample_path(sha)
+        if not path:
+            continue  # fetch_samples.sh may still bring it over
+        size = os.path.getsize(path)
+        if size < MIN_SAMPLE_BYTES or size > MAX_SAMPLE_BYTES:
+            _record_submission(con, sha, "skipped", service="malwarebazaar",
+                               detail=f"size {size} out of range", size=size)
+            continue
+        if row["malicious"] < MB_MIN_DETECTIONS:
+            waiting += 1
+            continue
+        if budget <= 0:
+            break
+
+        state, info = _mb_lookup(con, sha)
+        _spend(con, "mb")
+        budget -= 1
+        if state == "known":
+            _record_known(con, sha, "malwarebazaar",
+                          f"already in MalwareBazaar ({info or 'no signature'})",
+                          permalink=f"https://bazaar.abuse.ch/sample/{sha}/", size=size)
+            log(f"bazaar: {sha[:16]} already known")
+            time.sleep(2)
+            continue
+        if state == "error":
+            log(f"bazaar: lookup {sha[:16]} failed: {info}")
+            time.sleep(2)
+            continue
+        if budget <= 0:
+            break
+        if DRY_RUN_SUBMIT:
+            log(f"bazaar: would upload {sha[:16]} ({size} bytes, "
+                f"{row['malicious']} VT detections, first seen {first_day})")
+            continue
+
+        with open(path, "rb") as fh:
+            blob = fh.read()
+        meta = {
+            "anonymous": 1 if MB_ANONYMOUS else 0,
+            "delivery_method": "web_download" if row["via_url"] else "other",
+            "tags": _mb_tags(blob),
+            "context": {"comment": _mb_comment(first_day, row["via_url"],
+                                               row["via_upload"])},
+        }
+        body, ctype = _multipart({"json_data": json.dumps(meta)}, sha, blob)
+        status, resp = _http(
+            MB_API,
+            headers={"Auth-Key": MB_KEY, "Content-Type": ctype,
+                     "Content-Length": str(len(body))},
+            data=body,
+        )
+        _spend(con, "mb")
+        budget -= 1
+        qs = resp.get("query_status") if isinstance(resp, dict) else None
+        link = f"https://bazaar.abuse.ch/sample/{sha}/"
+        if status == 200 and qs == "inserted":
+            _record_submission(con, sha, "submitted", permalink=link,
+                               detail="uploaded", size=size, service="malwarebazaar")
+            sent += 1
+            log(f"bazaar: uploaded {sha[:16]} ({size} bytes)")
+        elif status == 200 and qs == "file_already_known":
+            _record_known(con, sha, "malwarebazaar", "already present at upload",
+                          permalink=link, size=size)
+        else:
+            _record_submission(con, sha, "error", service="malwarebazaar",
+                               detail=f"http {status}: {qs or str(resp)[:200]}",
+                               size=size)
+            log(f"bazaar: {sha[:16]} failed http {status} {qs}")
+        time.sleep(2)
+
+    db.set_state(con, "bazaar_built_at", db.utcnow())
+    con.commit()
+    log(f"bazaar: {sent} upload(s) this run, {waiting} waiting on "
+        f"VirusTotal detections")
+    return sent
+
 # ---------------------------------------------------------------------------
 
 STAGES = ("facts", "sessions", "tunnels", "payloads", "credentials",
           "fingerprints", "entities", "stage", "spikes", "intel", "families",
-          "submit")
+          "submit", "bazaar")
 
 
 def main():
@@ -951,12 +1188,13 @@ def main():
     ap.add_argument("--backfill-all", action="store_true", help="rebuild every day")
     ap.add_argument("--force-spikes", action="store_true", help="re-annotate known spikes")
     ap.add_argument("--dry-run-submit", action="store_true",
-                    help="list what would be uploaded to VirusTotal, upload nothing")
+                    help="list what would be uploaded to VirusTotal and "
+                         "MalwareBazaar, upload nothing")
     args = ap.parse_args()
 
     stages = [s.strip() for s in args.only.split(",")] if args.only else list(STAGES)
     if args.no_network:
-        for s_ in ("intel", "submit"):
+        for s_ in ("intel", "submit", "bazaar"):
             if s_ in stages:
                 stages.remove(s_)
     global DRY_RUN_SUBMIT
@@ -1010,6 +1248,8 @@ def main():
             con.commit()
         if "submit" in stages:
             submit_samples(con)
+        if "bazaar" in stages:
+            submit_bazaar(con)
         db.set_state(con, "last_run", db.utcnow())
         db.set_state(con, "last_run_seconds", round(time.time() - start, 1))
         con.commit()
