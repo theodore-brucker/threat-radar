@@ -52,6 +52,7 @@ MIGRATIONS = [
     os.path.join(APP_DIR, "migrations", "010_integrity.sql"),
     os.path.join(APP_DIR, "migrations", "011_families.sql"),
     os.path.join(APP_DIR, "migrations", "012_epoch_labels.sql"),
+    os.path.join(APP_DIR, "migrations", "013_contributions.sql"),
 ]
 LOCK_PATH = os.path.join(APP_DIR, ".insights.lock")
 
@@ -88,6 +89,12 @@ MB_ANONYMOUS = os.environ.get("TR_MB_ANONYMOUS", "0").strip() == "1"
 # about ten days. Both are enforced as gates, not preferences.
 MB_MAX_AGE_DAYS = int(os.environ.get("TR_MB_MAX_AGE_DAYS", "10"))
 MB_MIN_DETECTIONS = int(os.environ.get("TR_MB_MIN_DETECTIONS", "1"))
+# Replies that describe the account rather than the sample. Every later upload
+# in the same run would get the same answer, so the stage stops on the first.
+MB_ACCOUNT_ERRORS = ("user_unknown", "user_blacklisted")
+# Hashes we uploaded to VirusTotal are re-checked on this cadence instead of
+# the weekly default, so their detection trajectory has daily resolution.
+VT_CONTRIB_TTL_DAYS = int(os.environ.get("TR_VT_CONTRIB_TTL_DAYS", "1"))
 
 
 def log(msg):
@@ -394,7 +401,94 @@ def build_payloads(con):
     con.commit()
     log(f"payloads: {len(agg)} rollup rows from {len(rows)} transfer events, "
         "per-day table rebuilt")
+    n = record_provenance(con)
+    log(f"payloads: provenance kept for {n} sample(s)")
     return len(agg)
+
+
+EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+
+def record_provenance(con):
+    """Carry each sample's capture context into sample_provenance.
+
+    payloads and payload_sightings are rebuilt from raw_events, which the
+    retention pruner ages out, so they forget old captures. This table only
+    ever widens: first_seen moves earlier, last_seen later, counts never drop,
+    and the first-sighting fields are replaced only by an earlier sighting.
+    """
+    if not db.table_exists(con, "sample_provenance"):
+        return 0
+    rows = db.qall(
+        con,
+        """
+        SELECT p.shasum AS sha,
+               MIN(p.first_seen) AS first_seen,
+               MAX(p.last_seen) AS last_seen,
+               SUM(p.hits) AS hits,
+               MAX(p.url LIKE '%://%') AS via_url,
+               MAX(p.direction = 'upload') AS via_upload,
+               MAX(CASE WHEN p.url LIKE '%://%' THEN p.host END) AS host
+        FROM payloads p
+        WHERE p.shasum <> '' AND p.shasum <> ?
+        GROUP BY p.shasum
+        """,
+        (EMPTY_SHA256,),
+    )
+    now = db.utcnow()
+    for r in rows:
+        sha = r["sha"]
+        counts = db.qone(
+            con,
+            "SELECT COUNT(DISTINCT session) AS sessions, COUNT(DISTINCT src_ip) AS ips "
+            "FROM payload_sightings WHERE shasum = ?",
+            (sha,),
+        ) or {}
+        first = db.qone(
+            con,
+            "SELECT session, src_ip, url FROM payload_sightings "
+            "WHERE shasum = ? ORDER BY ts LIMIT 1",
+            (sha,),
+        ) or {}
+        first_url = db.qone(
+            con,
+            "SELECT url FROM payload_sightings WHERE shasum = ? AND url LIKE '%://%' "
+            "ORDER BY ts LIMIT 1",
+            (sha,),
+        ) or {}
+        delivery = ("url" if r["via_url"] else "upload" if r["via_upload"]
+                    else "inband")
+        con.execute(
+            """
+            INSERT INTO sample_provenance
+              (sha256, first_seen, last_seen, hits, sessions, src_ips, delivery,
+               source_url, host, first_session, first_src_ip, updated_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(sha256) DO UPDATE SET
+              source_url    = CASE WHEN excluded.first_seen < sample_provenance.first_seen
+                                   THEN excluded.source_url
+                                   ELSE COALESCE(sample_provenance.source_url, excluded.source_url) END,
+              first_session = CASE WHEN excluded.first_seen < sample_provenance.first_seen
+                                   THEN excluded.first_session ELSE sample_provenance.first_session END,
+              first_src_ip  = CASE WHEN excluded.first_seen < sample_provenance.first_seen
+                                   THEN excluded.first_src_ip ELSE sample_provenance.first_src_ip END,
+              delivery      = CASE WHEN excluded.first_seen < sample_provenance.first_seen
+                                   THEN excluded.delivery ELSE sample_provenance.delivery END,
+              host          = COALESCE(sample_provenance.host, excluded.host),
+              first_seen    = MIN(sample_provenance.first_seen, excluded.first_seen),
+              last_seen     = MAX(sample_provenance.last_seen, excluded.last_seen),
+              hits          = MAX(sample_provenance.hits, excluded.hits),
+              sessions      = MAX(sample_provenance.sessions, excluded.sessions),
+              src_ips       = MAX(sample_provenance.src_ips, excluded.src_ips),
+              updated_at    = excluded.updated_at
+            """,
+            (sha, r["first_seen"], r["last_seen"], r["hits"] or 0,
+             counts.get("sessions") or 0, counts.get("ips") or 0, delivery,
+             first_url.get("url"), r["host"], first.get("session"),
+             first.get("src_ip"), now),
+        )
+    con.commit()
+    return len(rows)
 
 
 # ---------------------------------------------------------------------------
@@ -636,7 +730,9 @@ def _save_intel(con, indicator, kind, source, verdict, counts=None, label=None,
     con.commit()
 
 
-def _stale(con, indicator, source):
+def _stale(con, indicator, source, ttl_days=None):
+    """ttl_days shortens the normal refresh interval for one indicator; it
+    never lengthens it."""
     row = con.execute(
         "SELECT checked_at, verdict FROM payload_intel WHERE indicator=? AND source=?",
         (indicator, source),
@@ -644,6 +740,8 @@ def _stale(con, indicator, source):
     if not row or not row["checked_at"]:
         return True
     ttl = 1 if (row["verdict"] or "unknown") in ("unknown", "error") else INTEL_TTL_DAYS
+    if ttl_days is not None:
+        ttl = min(ttl, int(ttl_days))
     try:
         seen = dt.datetime.strptime(row["checked_at"], "%Y-%m-%dT%H:%M:%SZ").replace(
             tzinfo=dt.timezone.utc
@@ -651,6 +749,50 @@ def _stale(con, indicator, source):
     except ValueError:
         return True
     return (dt.datetime.now(dt.timezone.utc) - seen).days >= ttl
+
+
+def _int_or_none(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _snapshot(con, sha, attrs, stats, label):
+    """One row per successful file lookup. first_submission_date and friends
+    are stored as VirusTotal reports them and left NULL when the public API
+    omits them, so the verification step can tell 'no data' from 'no'."""
+    if not db.table_exists(con, "vt_snapshots"):
+        return
+    engines = sum(int(stats.get(k, 0) or 0) for k in
+                  ("malicious", "suspicious", "undetected", "harmless"))
+    con.execute(
+        """
+        INSERT OR REPLACE INTO vt_snapshots
+          (sha256, fetched_at, malicious, suspicious, undetected, harmless,
+           engines, first_submission_date, last_submission_date,
+           times_submitted, label)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (sha, db.utcnow(),
+         int(stats.get("malicious", 0) or 0), int(stats.get("suspicious", 0) or 0),
+         int(stats.get("undetected", 0) or 0), int(stats.get("harmless", 0) or 0),
+         engines,
+         _int_or_none(attrs.get("first_submission_date")),
+         _int_or_none(attrs.get("last_submission_date")),
+         _int_or_none(attrs.get("times_submitted")),
+         label),
+    )
+    con.commit()
+
+
+def _vt_contributed(con):
+    if not db.table_exists(con, "payload_submissions"):
+        return set()
+    return {r["sha256"] for r in db.qall(
+        con,
+        "SELECT sha256 FROM payload_submissions "
+        "WHERE service = 'virustotal' AND status = 'submitted'")}
 
 
 def vt_lookup(con, indicator, kind):
@@ -697,6 +839,8 @@ def vt_lookup(con, indicator, kind):
             label = name
     if attrs.get("type_description"):
         label = f"{label or ''} [{attrs['type_description']}]".strip()
+    if kind == "sha256":
+        _snapshot(con, indicator, attrs, stats, label)
     # popular_threat_name carries the per-family vote counts the derivation
     # benefits from, so keep it rather than only the suggested label.
     _save_intel(con, indicator, kind, "virustotal", verdict, stats, label, ref,
@@ -785,11 +929,18 @@ def enrich(con):
     if VT_KEY:
         budget = _remaining(con, "vt", VT_MAX, VT_DAILY_CAP)
         log(f"intel: virustotal budget this run {budget}")
+        # Our own uploads go first and refresh daily, so a tight budget never
+        # starves the detection trajectory the contributions view draws.
+        contributed = _vt_contributed(con)
+        hashes = ([h for h in hashes if h in contributed]
+                  + [h for h in hashes if h not in contributed]
+                  + sorted(contributed - set(hashes)))
         for kind, items in (("sha256", hashes), ("url", urls)):
             for ind in items:
                 if budget <= 0:
                     break
-                if not _stale(con, ind, "virustotal"):
+                ttl = VT_CONTRIB_TTL_DAYS if ind in contributed else None
+                if not _stale(con, ind, "virustotal", ttl):
                     continue
                 v = vt_lookup(con, ind, kind)
                 log(f"intel: virustotal {kind} {ind[:60]} -> {v}")
@@ -934,7 +1085,10 @@ def submit_samples(con):
           AND NOT EXISTS (
             SELECT 1 FROM payload_submissions s
             WHERE s.sha256 = p.shasum AND s.service = 'virustotal'
-                  AND s.status IN ('submitted','duplicate')
+                  AND (s.status IN ('submitted','duplicate')
+                       -- a size skip is permanent; re-evaluating it every run
+                       -- only rewrote submitted_at and hid when it happened
+                       OR (s.status = 'skipped' AND s.detail LIKE 'size %'))
           )
         ORDER BY p.shasum
         """,
@@ -1097,7 +1251,8 @@ def submit_bazaar(con):
     budget = _remaining(con, "mb", MB_SUBMIT_MAX, MB_DAILY_CAP)
     log(f"bazaar: {len(rows)} unrecorded hash(es), budget {budget}")
 
-    sent = waiting = 0
+    sent = waiting = missing = 0
+    blocked = None
     for row in rows:
         sha = row["sha"]
         first_day = str(row["first_seen"] or "")[:10]
@@ -1112,7 +1267,8 @@ def submit_bazaar(con):
             continue
         path = _sample_path(sha)
         if not path:
-            continue  # fetch_samples.sh may still bring it over
+            missing += 1  # fetch_samples.sh may still bring it over
+            continue
         size = os.path.getsize(path)
         if size < MIN_SAMPLE_BYTES or size > MAX_SAMPLE_BYTES:
             _record_submission(con, sha, "skipped", service="malwarebazaar",
@@ -1121,8 +1277,10 @@ def submit_bazaar(con):
         if row["malicious"] < MB_MIN_DETECTIONS:
             waiting += 1
             continue
-        if budget <= 0:
-            break
+        # Out of budget or blocked: keep walking so the counts logged at the
+        # end cover every hash, but make no more network calls.
+        if budget <= 0 or blocked:
+            continue
 
         state, info = _mb_lookup(con, sha)
         _spend(con, "mb")
@@ -1139,7 +1297,7 @@ def submit_bazaar(con):
             time.sleep(2)
             continue
         if budget <= 0:
-            break
+            continue
         if DRY_RUN_SUBMIT:
             log(f"bazaar: would upload {sha[:16]} ({size} bytes, "
                 f"{row['malicious']} VT detections, first seen {first_day})")
@@ -1164,8 +1322,18 @@ def submit_bazaar(con):
         _spend(con, "mb")
         budget -= 1
         qs = resp.get("query_status") if isinstance(resp, dict) else None
-        if qs is None and "inserted" in str(resp.get("raw", "")):
+        raw = str(resp.get("raw", "")) if isinstance(resp, dict) else ""
+        if qs is None and "inserted" in raw:
             qs = "inserted"
+        account = next((e for e in MB_ACCOUNT_ERRORS if e == qs or e in raw), None)
+        if account:
+            # Not this sample's fault: leave no error row, so it is retried
+            # untouched once the account is fixed, and stop spending budget.
+            blocked = account
+            log(f"bazaar: account problem '{account}', stopping this run. "
+                "Sign in at https://bazaar.abuse.ch/login/ with the account "
+                "that owns the Auth-Key.")
+            continue
         link = f"https://bazaar.abuse.ch/sample/{sha}/"
         if status == 200 and qs == "inserted":
             _record_submission(con, sha, "submitted", permalink=link,
@@ -1183,9 +1351,11 @@ def submit_bazaar(con):
         time.sleep(2)
 
     db.set_state(con, "bazaar_built_at", db.utcnow())
+    db.set_state(con, "bazaar_missing_local", missing)
+    db.set_state(con, "bazaar_blocked", blocked or "")
     con.commit()
     log(f"bazaar: {sent} upload(s) this run, {waiting} waiting on "
-        f"VirusTotal detections")
+        f"VirusTotal detections, {missing} in-window sample(s) not on this host")
     return sent
 
 # ---------------------------------------------------------------------------

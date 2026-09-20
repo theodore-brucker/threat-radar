@@ -70,3 +70,21 @@ Python 3 / FastAPI / SQLite (WAL) on the Pi, Cowrie on Ubuntu behind nftables on
 Deployment is a git pull: the Pi tracks this repo through a read-only deploy key, and `deploy/update.sh` fetches, syncs dependencies, restarts services, and health-checks the API.
 
 See `SETUP.md` for build notes.
+
+## Tests
+
+The suite uses only the standard library `unittest` plus the packages already
+in `requirements.txt`. Every test builds a throwaway database from
+`schema.sql` and the real migrations, and no test touches the network: the
+worker's HTTP helper is replaced with a scripted fake. Run it from the repo
+root, locally or on the Pi:
+
+```bash
+cd /opt/threat-radar && sudo -u radar venv/bin/python -m unittest discover -s tests -t .
+```
+
+Coverage is organised by feature: VirusTotal submission (`test_vt_submit`),
+MalwareBazaar submission (`test_bazaar`), VirusTotal snapshots and refresh
+cadence (`test_snapshots`), durable capture context (`test_provenance`),
+contribution attribution and counts (`test_contributions`), and the API
+surface (`test_api`).

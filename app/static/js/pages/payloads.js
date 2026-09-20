@@ -6,6 +6,47 @@ import { api, h, num, bytes, panel, table, tag, mid, shortDate,
 
 export const TITLE = "Malware";
 
+/* A link out to the public record for one contribution. External, so it opens
+   in a new tab and carries no referrer. */
+function serviceLink(key, svc, sha) {
+  const href = svc.permalink || (key === "malwarebazaar"
+    ? `https://bazaar.abuse.ch/sample/${encodeURIComponent(sha)}/`
+    : `https://www.virustotal.com/gui/file/${encodeURIComponent(sha)}`);
+  return h("a", {
+    class: "tag ok", target: "_blank", rel: "noreferrer noopener", href,
+    title: `uploaded ${svc.submitted_at || ""}`, text: svc.label || key,
+  });
+}
+
+const ATTRIBUTION = {
+  confirmed: ["first submitter", "ok",
+    "VirusTotal's first submission date matches our upload."],
+  preceded: ["preceded", "warn",
+    "Someone else uploaded this to VirusTotal before our upload landed."],
+  unverified: ["unverified", "",
+    "VirusTotal has not reported a first submission date for this file yet."],
+};
+
+function attributionTag(a) {
+  if (!a) return h("span", { class: "sub2", text: "not on VirusTotal" });
+  const [text, tone, why] = ATTRIBUTION[a] || [a, "", ""];
+  return h("span", { class: `tag ${tone}`.trim(), title: why, text });
+}
+
+/* Detections the day we uploaded against the latest lookup. */
+function detectionCell(d) {
+  if (!d || !d.current) return h("span", { class: "sub2", text: "no lookup yet" });
+  const a = d.initial, b = d.current;
+  const same = a.at === b.at;
+  return h("span", { class: "mono" }, [
+    same ? `${b.malicious}/${b.engines}` : `${a.malicious}/${a.engines} to ${b.malicious}/${b.engines}`,
+    !same && d.lift > 0 ? h("span", { class: "sub2", text: ` +${d.lift}` }) : null,
+  ]);
+}
+
+const DELIVERY = { url: "fetched from a URL", upload: "pushed over SFTP/SCP",
+                   inband: "written in-band" };
+
 function verdictTag(v) {
   // "undetected" is not "clean": nothing flagged it, which for a sample we
   // submitted ourselves often means nobody has looked yet. No green tick.
@@ -27,17 +68,19 @@ export async function render() {
   const d = await api("/api/v1/payloads");
   const s = d.summary || {};
   const list = (d.payloads && d.payloads.payloads) || [];
-  const subs = d.submissions || [];
+  const c = d.contributions || {};
+  const cs = c.summary || {};
+  const items = c.items || [];
 
   const captured = Number(s.distinct_hashes || 0);
   const flagged = Number(s.flagged_indicators || 0);
-  const sent = subs.filter((x) => x.status === "submitted").length;
-  const dupes = subs.filter((x) => x.status === "duplicate").length;
+  // Distinct samples we uploaded to at least one service inside the window.
+  // A service that already held a file is never counted as a contribution.
+  const sent = Number(cs.contributed_window || 0);
 
   const steps = [
     { label: "captured", value: captured, color: "--stage-3" },
     { label: "identified", value: flagged, color: "--stage-4" },
-    { label: "new to VirusTotal", value: sent + dupes, color: "--accent" },
     { label: "contributed", value: sent, color: "--ok" },
   ];
 
@@ -49,7 +92,8 @@ export async function render() {
           + "industry has never seen before is sent upstream so other defenders benefit."
         : "Every file a session moved, rolled up by hash and source URL, with VirusTotal "
           + "and URLhaus standings attached. Hashes VirusTotal returns 404 on are uploaded "
-          + "from here, which makes the sensor a contributor rather than only a consumer." }),
+          + "there, and confirmed malware under ten days old goes to MalwareBazaar under a "
+          + "named account, which makes the sensor a contributor rather than only a consumer." }),
     ]),
 
     panel("Contribution loop", "From capture to upstream submission.", [
@@ -61,8 +105,8 @@ export async function render() {
             "Of ", { b: `${num(captured)} distinct files` }, " captured, ",
             { b: num(flagged) }, " carried a known malware standing and ",
             sent > 0
-              ? { b: `${num(sent)} were new enough to contribute back` }
-              : { alarm: "none were new to VirusTotal" },
+              ? { b: `${num(sent)} went upstream as new samples` }
+              : { alarm: "none were new upstream" },
             sent > 0 ? "." : " in this window, which is normal for commodity tooling.",
           ])
         : null,
@@ -115,19 +159,39 @@ export async function render() {
         ],
         "No files moved in this window.")]),
 
-    panel("Upstream submissions",
-      "Samples VirusTotal had never seen, uploaded from here. Hashes already in their "
-      + "corpus are skipped, so the count stays small by design.",
-      [table(
-        [{ label: "sha256" }, { label: "status" }, { label: "size", num: true }, { label: "when" }],
-        subs,
+    panel("Contributions",
+      "All time. Samples this sensor uploaded that the service did not already hold. "
+      + "Attribution compares our upload time with VirusTotal's own first submission date, "
+      + "and detections show what engines said on the day against the latest lookup.",
+      [cs.contributed_samples
+        ? takeaway([
+            { b: `${num(cs.contributed_samples)} samples` }, " contributed in total, ",
+            { b: num(cs.confirmed_first || 0) }, " confirmed as the first VirusTotal submission",
+            cs.preceded ? [", ", { alarm: `${num(cs.preceded)} preceded by another submitter` }] : "",
+            ".",
+          ].flat())
+        : null,
+       table(
+        [{ label: "sample" }, { label: "family" }, { label: "published to" },
+         { label: "attribution" }, { label: "detections" }, { label: "capture" },
+         { label: "contributed" }],
+        items,
         (r) => [
-          entity("sample", r.sha256, mid(r.sha256, 12, 6)),
-          tag(r.status, r.status === "submitted" ? "ok" : r.status === "error" ? "bad" : ""),
-          bytes(r.size_bytes),
-          dayLink(r.submitted_at),
+          [entity("sample", r.sha256, mid(r.sha256, 12, 6)),
+           r.size_bytes ? h("div", { class: "sub2 mono", text: bytes(r.size_bytes) }) : null],
+          familyTag(r),
+          h("span", {}, Object.entries(r.services || {})
+            .map(([k, v]) => serviceLink(k, v, r.sha256))
+            .flatMap((el, i) => (i ? [" ", el] : [el]))),
+          attributionTag(r.attribution),
+          detectionCell(r.detections),
+          r.capture
+            ? [h("span", { class: "sub2", text: DELIVERY[r.capture.delivery] || "unknown" }),
+               h("div", {}, [dayLink(r.capture.first_seen)])]
+            : h("span", { class: "sub2", text: "capture record not kept" }),
+          dayLink(r.first_contributed),
         ],
-        "No submissions in this window. Every captured file was already known upstream.")]),
+        "Nothing contributed yet. Every captured file was already known upstream.")]),
 
     panel("Distribution hosts",
       "A host that also appears as an attacker is serving stagers from the same box it "

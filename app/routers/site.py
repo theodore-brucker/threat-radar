@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from app.analytics import asn as asnmod
 from app.analytics import credentials as credmod
 from app.analytics import cards as cardmod
+from app.analytics import contributions as contribmod
 from app.analytics import db
 from app.analytics import entities as entmod
 from app.analytics import escalation
@@ -95,14 +96,14 @@ def meta():
                       "credentials_built_at", "spikes_built_at",
                       "intel_built_at", "stage_built_at", "fingerprints_built_at",
                       "submissions_built_at", "entities_built_at",
-                      "families_built_at")
+                      "families_built_at", "bazaar_built_at")
         }
         coverage = db.qone(
             con, "SELECT MIN(day) first_day, MAX(day) last_day FROM asn_ip_daily"
         ) or {}
         chat_enabled = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
         return ok({"worker": state, "coverage": coverage, "chat": chat_enabled,
-                   "version": "3.5.0"})
+                   "version": "3.6.0"})
     finally:
         con.close()
 
@@ -309,23 +310,32 @@ def payloads(days: int = Query(30, ge=1, le=3650),
              limit: int = Query(200, ge=1, le=1000)):
     con = _con()
     try:
-        subs = []
-        if db.table_exists(con, "payload_submissions"):
-            subs = db.qall(
-                con,
-                "SELECT sha256, service, status, permalink, size_bytes, submitted_at"
-                " FROM payload_submissions ORDER BY submitted_at DESC LIMIT 100",
-            )
         return ok(
             {
                 "summary": payloadmod.summary(con, days),
                 "payloads": payloadmod.list_payloads(con, days, None, limit),
                 "hosts": payloadmod.hosts(con, days, 40),
                 "families": fammod.overview(con, days, 20),
-                "submissions": subs,
+                "contributions": {
+                    "summary": contribmod.summary(con, days),
+                    "items": contribmod.contributions(con, 50),
+                },
             },
             days,
         )
+    finally:
+        con.close()
+
+
+@router.get("/api/v1/contributions")
+def contributions(limit: int = Query(200, ge=1, le=1000)):
+    """Samples this sensor uploaded upstream, with capture context, detection
+    trajectory and first-submitter attribution. Lifetime, not windowed: a
+    contribution does not stop being one when it ages out of the window."""
+    con = _con()
+    try:
+        return ok({"summary": contribmod.summary(con),
+                   "contributions": contribmod.contributions(con, limit)})
     finally:
         con.close()
 

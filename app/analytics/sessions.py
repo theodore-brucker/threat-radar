@@ -327,9 +327,11 @@ def sample_detail(con, shasum):
     out["intel"] = _rows(cur)
 
     cur = con.execute(
-        """SELECT status, permalink, size_bytes, submitted_at, detail
+        """SELECT service, status, permalink, size_bytes, submitted_at, detail
            FROM payload_submissions WHERE sha256=?""", (shasum,))
     out["submissions"] = _rows(cur)
+    from . import contributions as _contrib
+    out["contribution"] = _contrib.for_sample(con, shasum)
 
     # payload_sightings is indexed on shasum. The previous version selected
     # every transfer event in the database and filtered in Python, so the page

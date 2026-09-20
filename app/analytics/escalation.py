@@ -54,7 +54,9 @@ def rail(con, days=30):
         submitted = (db.qone(
             con,
             "SELECT COUNT(DISTINCT sha256) n FROM payload_submissions "
-            "WHERE status IN ('submitted','duplicate') AND substr(submitted_at,1,10) >= ?",
+            # Only real uploads. 'duplicate' rows now exist for every hash a
+            # service already held and would swamp this stage.
+            "WHERE status = 'submitted' AND substr(submitted_at,1,10) >= ?",
             (cut_day,),
         ) or {}).get("n", 0)
 

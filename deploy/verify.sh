@@ -116,6 +116,7 @@ get "meta"                      "/api/v1/meta"          '"ok"' && envelope_check
 get "health"                    "/api/v1/health"
 get "rail"                      "/api/v1/rail"
 get "funnel"                    "/api/v1/funnel"
+get "contributions"             "/api/v1/contributions"  '"contributed_samples"'
 get "spikes"                    "/api/v1/spikes"
 get "chat status"               "/api/v1/chat/status"
 

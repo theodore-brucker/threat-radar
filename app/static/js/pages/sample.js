@@ -28,6 +28,38 @@ function packerPanel(pk) {
   ], { scoped: false });
 }
 
+/* Only for samples this sensor uploaded. Every fact here is linkable to the
+   public record, so the claim can be checked without trusting this page. */
+function contributionPanel(c) {
+  if (!c) return null;
+  const names = { virustotal: "VirusTotal", malwarebazaar: "MalwareBazaar" };
+  const verdict = {
+    confirmed: "first submitter, matched against VirusTotal's first submission date",
+    preceded: "another submitter reached VirusTotal first",
+    unverified: "VirusTotal has not reported a first submission date yet",
+  };
+  const det = c.detections || {};
+  const rows = Object.entries(c.services || {}).map(([k, v]) => [
+    `uploaded to ${names[k] || k}`,
+    h("span", {}, [
+      dayLink(v.submitted_at), " ",
+      h("a", { target: "_blank", rel: "noreferrer noopener", href: v.permalink || "#",
+               text: "public record" }),
+    ]),
+  ]);
+  if (c.attribution) rows.push(["attribution", verdict[c.attribution] || c.attribution]);
+  if (det.initial) {
+    rows.push(["detections then", `${det.initial.malicious} of ${det.initial.engines}`]);
+    rows.push(["detections now", `${det.current.malicious} of ${det.current.engines}`]);
+  }
+  return panel("Contributed upstream", null, [
+    h("dl", { class: "facts" }, rows.flatMap(([k, v]) => [
+      h("dt", { text: k }),
+      h("dd", { class: "mono" }, [typeof v === "object" ? v : String(v)]),
+    ])),
+  ], { scoped: false });
+}
+
 export async function render() {
   const sha = (currentPath().split("/").filter(Boolean)[1] || "").toLowerCase();
   let d;
@@ -83,6 +115,8 @@ export async function render() {
     ], { scoped: false }),
 
     packerPanel(d.packer),
+
+    contributionPanel(d.contribution),
 
     panel("Where it was seen", "Every session that moved this file.", [
       table(

@@ -71,7 +71,10 @@ def headline(con, days=30):
         submitted = (db.qone(
             con,
             "SELECT COUNT(DISTINCT sha256) n FROM payload_submissions "
-            "WHERE status IN ('submitted','duplicate') "
+            # 'duplicate' means the service already had the file. Since
+            # the worker records every known hash, counting it here would
+            # report the whole capture set as contributed.
+            "WHERE status = 'submitted' "
             "AND substr(submitted_at,1,10) >= ?",
             (cut_day,),
         ) or {}).get("n", 0)
