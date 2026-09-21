@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
 """Threat Radar retention pruner.
 
-Enforces three independent caps so the Pi never fills its disk and stops
-recording:
+Retention is decided by age, and storage is watched rather than enforced:
 
-  1. AGE  — drop raw_events older than TR_RETAIN_DAYS.
-  2. SIZE — if the database still exceeds TR_MAX_DB_MB, drop the oldest
-            events in batches until it fits.
-  3. ROLLUPS — drop per-day fact rows older than TR_ROLLUP_RETAIN_DAYS.
+  1. AGE      drop raw_events older than TR_RETAIN_DAYS.
+  2. STORAGE  report, never delete, when the database exceeds TR_MAX_DB_MB
+              or the disk lacks room for a VACUUM. The report lands in
+              insights_state where the health view shows it.
+  3. ROLLUPS  drop per-day fact rows older than TR_ROLLUP_RETAIN_DAYS, which
+              the unit sets far enough out to mean "keep".
 
-The age cap is the normal path; the size cap is the safety net for a
-traffic spike that fills the disk faster than the day boundary arrives.
+The storage step used to delete the oldest raw events until the database fit.
+That was a safety net when the per-day tables were small, and a quiet threat
+to the retention decision once they were kept indefinitely: every megabyte
+they grew would have come out of the raw window, with nothing reporting it.
 
-The rollup cap is deliberately far longer than the raw cap. Every per-day
-fact table outlives the events it was built from, and that is the point:
-they are the only reason a window wider than TR_RETAIN_DAYS shows anything
-at all. Pruning them on the raw boundary would silently reduce "all time"
-to one month. They still need a ceiling, because nothing else bounds them.
+The per-day fact tables outlive the events they were built from, and that is
+the point: they are the only reason a window wider than TR_RETAIN_DAYS shows
+anything at all. Pruning them on the raw boundary would silently reduce "all
+time" to one month.
 
 Aggregate counters in `sources` are deliberately NOT deleted with the raw
 events, so long-run totals and first_seen survive pruning. Sources whose
@@ -25,11 +27,11 @@ are dropped too, to stop unbounded growth of that table.
 
 Spool files and their ingest_state rows are pruned on the same schedule.
 
-Run from a systemd timer. Safe to run repeatedly; does nothing when under
-both caps.
+Run from a systemd timer. Safe to run repeatedly.
 """
 import glob
 import os
+import shutil
 import sqlite3
 import sys
 import time
@@ -49,7 +51,6 @@ ROLLUP_RETAIN_DAYS = int(os.environ.get("TR_ROLLUP_RETAIN_DAYS", "365"))
 BATCH = 20000
 # Never let the size cap empty the database entirely; if the cap is set
 # smaller than this many events occupy, stop and warn instead.
-MIN_KEEP_EVENTS = int(os.environ.get("TR_MIN_KEEP_EVENTS", "5000"))
 
 
 def log(msg: str) -> None:
@@ -89,26 +90,53 @@ def prune_by_age(conn) -> int:
     return total
 
 
-def prune_by_size(conn) -> int:
-    total = 0
-    while db_size_mb(conn, used_only=True) > MAX_DB_MB:
-        remaining = conn.execute("SELECT COUNT(*) FROM raw_events").fetchone()[0]
-        if remaining <= MIN_KEEP_EVENTS:
-            log(f"size: at floor of {MIN_KEEP_EVENTS} events, stopping "
-                f"(cap {MAX_DB_MB}MB may be too small)")
-            break
-        cur = conn.execute(
-            "DELETE FROM raw_events WHERE id IN ("
-            "  SELECT id FROM raw_events ORDER BY ts ASC LIMIT ?)",
-            (min(BATCH, remaining - MIN_KEEP_EVENTS),),
+def check_storage(conn) -> int:
+    """Report when the database outgrows its cap, without shortening retention.
+
+    This used to enforce TR_MAX_DB_MB by deleting the oldest raw events until
+    the database fit. Raw events are the only table it could delete from, and
+    the per-day tables are kept indefinitely, so as they grew the cap would
+    have eaten into the thirty days of raw events an hour at a time and said
+    nothing. Raw retention is the age cap's decision alone now. When the
+    database is over its cap, or the disk no longer has room for a VACUUM,
+    that is recorded where the health view reads it and stays visible until
+    someone decides what to change.
+
+    Returns 0, because nothing is deleted here. It keeps the shape of the
+    other prune steps so main() reads the same.
+    """
+    used = db_size_mb(conn, used_only=True)
+    free_disk = shutil.disk_usage(os.path.dirname(os.path.abspath(DB))).free / (1024 * 1024)
+
+    problems = []
+    if used > MAX_DB_MB:
+        problems.append(
+            f"The database is {used:.0f} MB against a {MAX_DB_MB} MB cap. Raw "
+            f"events are still kept for {RETAIN_DAYS} days; decide whether to "
+            f"raise TR_MAX_DB_MB or trim what the rollups keep."
         )
-        conn.commit()
-        if not cur.rowcount:
-            break
-        total += cur.rowcount
-    if total:
-        log(f"size: removed {total} oldest events to fit {MAX_DB_MB}MB")
-    return total
+    # VACUUM writes a complete copy of the database, so it needs at least that
+    # much free space plus headroom for the WAL it leaves behind.
+    if free_disk < used * 2:
+        problems.append(
+            f"Only {free_disk:.0f} MB free on the data volume for a {used:.0f} MB "
+            f"database, too little for VACUUM to complete."
+        )
+
+    if problems:
+        message = " ".join(problems)
+        conn.execute(
+            "INSERT INTO insights_state(key, value, updated_at) VALUES(?,?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value, "
+            "updated_at=excluded.updated_at",
+            ("storage_status", message,
+             datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")),
+        )
+        log(f"storage: {message}")
+    else:
+        conn.execute("DELETE FROM insights_state WHERE key = 'storage_status'")
+    conn.commit()
+    return 0
 
 
 def prune_sources(conn) -> int:
@@ -194,7 +222,7 @@ def main() -> int:
     conn.execute("PRAGMA busy_timeout=30000")
     before = db_size_mb(conn)
 
-    dropped = prune_by_age(conn) + prune_by_size(conn)
+    dropped = prune_by_age(conn) + check_storage(conn)
     prune_sources(conn)
     prune_spool(conn)
     dropped += prune_rollups(conn)

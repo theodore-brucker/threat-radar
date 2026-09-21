@@ -29,7 +29,13 @@ class ProvenanceTests(DBTestCase):
         self.con.commit()
         worker.build_payloads(self.con)
 
-        self.assertIsNone(db.qone(self.con, "SELECT 1 FROM payloads WHERE shasum = ?", (s,)))
+        # payloads used to lose this row once the raw events were gone, which
+        # this test asserted as its premise: provenance kept the capture
+        # context that payloads dropped. payloads now accumulates too, so both
+        # keep it, and the lifetime row must keep its original first sighting.
+        kept = db.qone(self.con, "SELECT first_seen FROM payloads WHERE shasum = ?", (s,))
+        self.assertIsNotNone(kept)
+        self.assertEqual(kept["first_seen"], "2026-08-24T16:10:00Z")
         after = self.prov(s)
         self.assertEqual(after["first_seen"], "2026-08-24T16:10:00Z")
         self.assertEqual(after["first_session"], "sessA")

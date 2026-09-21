@@ -54,6 +54,7 @@ MIGRATIONS = [
     os.path.join(APP_DIR, "migrations", "011_families.sql"),
     os.path.join(APP_DIR, "migrations", "012_epoch_labels.sql"),
     os.path.join(APP_DIR, "migrations", "013_contributions.sql"),
+    os.path.join(APP_DIR, "migrations", "014_drop_redundant_index.sql"),
 ]
 # The service account does not own the repository, so the lock lives in the
 # unit's RuntimeDirectory. The fallback is for a run by hand outside systemd.
@@ -189,12 +190,20 @@ def all_days(con, ts):
 
 
 def days_to_build(con, ts, table, backfill_all=False):
+    """Days whose rows in `table` should be rebuilt from raw events.
+
+    Only days that still have raw events are ever returned, so a per-day table
+    keeps everything older than the raw window. The oldest raw day needs care
+    in a full backfill: the age prune cuts through it, so its raw events are
+    usually a partial day, and rebuilding it would replace a complete count
+    with a truncated one. An oldest day that is already built is left alone.
+    """
     days = all_days(con, ts)
     if not days:
         return []
-    if backfill_all:
-        return days
     have = {r[0] for r in con.execute(f"SELECT DISTINCT day FROM {table}").fetchall()}
+    if backfill_all:
+        return [d for d in days if d != days[0] or d not in have]
     recent = set(days[-RECENT_DAYS:])
     return sorted((set(days) - have) | recent)
 
@@ -354,109 +363,114 @@ def _host_of(url):
         return ""
 
 
-def build_payloads(con):
+def build_payloads(con, backfill_all=False):
+    """Transfer rollups that outlive the raw window.
+
+    Raw events are kept for a month and these tables are kept indefinitely, so
+    nothing here is refilled from raw events wholesale. Earlier versions
+    deleted all three tables and rebuilt them from the raw window on every
+    run, which quietly cut payload history to thirty days, including the
+    per-day table whose whole purpose is the long view.
+
+    Sightings accumulate: one row per transfer event, keyed so that inserting
+    the same event again is a no-op, which means rows from days that have left
+    the raw window stay put. The lifetime table is derived from sightings, so
+    its distinct session and source counts are exact rather than sums of daily
+    figures. The per-day table is rebuilt only for days raw events still cover.
+    """
     ts = db.TsExpr(con)
     rows = db.qall(
         con,
         f"""
         SELECT eventid, session, src_ip, {ts.iso} AS ts,
                COALESCE(json_extract(payload,'$.shasum'),'')   AS shasum,
-               COALESCE(json_extract(payload,'$.url'),'')      AS url,
-               COALESCE(json_extract(payload,'$.destfile'),
-                        json_extract(payload,'$.filename'),
-                        json_extract(payload,'$.outfile'),'')  AS filename
+               COALESCE(json_extract(payload,'$.url'),'')      AS url
         FROM v_events
         WHERE eventid IN (?, ?)
-        ORDER BY ts
         """,
         (DOWNLOAD_EVENT, UPLOAD_EVENT),
     )
-
-    agg = {}
-    con.execute("DELETE FROM payloads")
-    con.execute("DELETE FROM payload_sightings")
+    added = 0
     for r in rows:
         direction = "download" if r["eventid"] == DOWNLOAD_EVENT else "upload"
-        key = (r["shasum"] or "", r["url"] or "", direction)
-        rec = agg.setdefault(
-            key,
-            {
-                "filename": r["filename"],
-                "host": _host_of(r["url"]),
-                "hits": 0,
-                "sessions": set(),
-                "ips": set(),
-                "first": r["ts"],
-                "last": r["ts"],
-            },
-        )
-        rec["hits"] += 1
-        if r["session"]:
-            rec["sessions"].add(r["session"])
-        if r["src_ip"]:
-            rec["ips"].add(r["src_ip"])
-        rec["first"] = min(rec["first"] or r["ts"], r["ts"] or "")
-        rec["last"] = max(rec["last"] or r["ts"], r["ts"] or "")
-        if not rec["filename"] and r["filename"]:
-            rec["filename"] = r["filename"]
-        con.execute(
-            "INSERT OR REPLACE INTO payload_sightings"
+        cur = con.execute(
+            "INSERT OR IGNORE INTO payload_sightings"
             "(shasum,url,direction,session,src_ip,ts) VALUES(?,?,?,?,?,?)",
-            (key[0], key[1], direction, r["session"], r["src_ip"], r["ts"]),
+            (r["shasum"] or "", r["url"] or "", direction, r["session"], r["src_ip"], r["ts"]),
         )
+        added += cur.rowcount
+    con.commit()
 
-    for (sha, url, direction), rec in agg.items():
+    # Per-day counts for the window selector, only where raw events remain.
+    days = days_to_build(con, ts, "payload_daily", backfill_all)
+    for day in days:
+        lo, hi = ts.day_range(day)
+        con.execute("DELETE FROM payload_daily WHERE day = ?", (day,))
+        con.execute(
+            """
+            INSERT OR REPLACE INTO payload_daily
+              (day, shasum, url, direction, host, filename, hits, sessions, src_ips)
+            SELECT ?,
+                   COALESCE(json_extract(payload,'$.shasum'),''),
+                   COALESCE(json_extract(payload,'$.url'),''),
+                   CASE WHEN eventid = ? THEN 'download' ELSE 'upload' END,
+                   NULL,
+                   COALESCE(json_extract(payload,'$.destfile'),
+                            json_extract(payload,'$.filename'),
+                            json_extract(payload,'$.outfile'),''),
+                   COUNT(*), COUNT(DISTINCT session), COUNT(DISTINCT src_ip)
+            FROM v_events
+            WHERE eventid IN (?, ?) AND ts >= ? AND ts < ?
+            GROUP BY 2, 3, 4
+            """,
+            (day, DOWNLOAD_EVENT, DOWNLOAD_EVENT, UPLOAD_EVENT, lo, hi),
+        )
+    con.commit()
+
+    # The first filename a payload was seen under, from the long-lived table.
+    filenames = {}
+    for r in con.execute(
+        "SELECT shasum, url, direction, filename FROM payload_daily"
+        " WHERE COALESCE(filename,'') <> '' ORDER BY day"
+    ):
+        filenames.setdefault((r[0], r[1], r[2]), r[3])
+
+    agg = db.qall(
+        con,
+        """
+        SELECT shasum, url, direction,
+               COUNT(*) AS hits,
+               COUNT(DISTINCT session) AS sessions,
+               COUNT(DISTINCT src_ip) AS src_ips,
+               MIN(ts) AS first_seen, MAX(ts) AS last_seen
+        FROM payload_sightings
+        GROUP BY 1, 2, 3
+        """,
+    )
+    con.execute("DELETE FROM payloads")
+    for a in agg:
+        key = (a["shasum"], a["url"], a["direction"])
         con.execute(
             """
             INSERT OR REPLACE INTO payloads
               (shasum,url,direction,filename,host,hits,sessions,src_ips,first_seen,last_seen)
             VALUES(?,?,?,?,?,?,?,?,?,?)
             """,
-            (
-                sha,
-                url,
-                direction,
-                rec["filename"],
-                rec["host"],
-                rec["hits"],
-                len(rec["sessions"]),
-                len(rec["ips"]),
-                rec["first"],
-                rec["last"],
-            ),
+            (a["shasum"], a["url"], a["direction"], filenames.get(key),
+             _host_of(a["url"]), a["hits"], a["sessions"], a["src_ips"],
+             a["first_seen"], a["last_seen"]),
         )
-    # Per-day payload counts for the window selector.
-    con.execute("DELETE FROM payload_daily")
-    ts2 = db.TsExpr(con)
-    con.execute(
-        f"""
-        INSERT OR REPLACE INTO payload_daily
-          (day, shasum, url, direction, host, filename, hits, sessions, src_ips)
-        SELECT {ts2.day},
-               COALESCE(json_extract(payload,'$.shasum'),''),
-               COALESCE(json_extract(payload,'$.url'),''),
-               CASE WHEN eventid = ? THEN 'download' ELSE 'upload' END,
-               NULL,
-               COALESCE(json_extract(payload,'$.destfile'),
-                        json_extract(payload,'$.filename'),
-                        json_extract(payload,'$.outfile'),''),
-               COUNT(*), COUNT(DISTINCT session), COUNT(DISTINCT src_ip)
-        FROM v_events
-        WHERE eventid IN (?, ?)
-        GROUP BY 1, 2, 3, 4
-        """,
-        (DOWNLOAD_EVENT, DOWNLOAD_EVENT, UPLOAD_EVENT),
-    )
-    # host is parsed in Python, so fill it from the rollup we just built
+    # host is parsed in Python, so fill it into the per-day rows from the
+    # lifetime table, touching only rows that do not have it yet.
     con.execute(
         "UPDATE payload_daily SET host = (SELECT p.host FROM payloads p "
         "WHERE p.shasum = payload_daily.shasum AND p.url = payload_daily.url "
-        "AND p.direction = payload_daily.direction)"
+        "AND p.direction = payload_daily.direction) WHERE host IS NULL"
     )
     db.set_state(con, "payloads_built_at", db.utcnow())
     con.commit()
-    log(f"payloads: {len(agg)} rollup rows from {len(rows)} transfer events, "
-        "per-day table rebuilt")
+    log(f"payloads: {len(agg)} lifetime row(s), {added} new sighting(s), "
+        f"{len(days)} day(s) of per-day counts")
     n = record_provenance(con)
     log(f"payloads: provenance kept for {n} sample(s)")
     return len(agg)
@@ -552,83 +566,34 @@ def record_provenance(con):
 # ---------------------------------------------------------------------------
 
 def build_credentials(con, backfill_all=False):
+    """Credential rollups that outlive the raw window.
+
+    The per-day table is rebuilt only for days raw events still cover, as
+    before. What changed is where the lifetime views come from. cred_pairs,
+    cred_pair_tags and cred_tag_ips used to be wiped and refilled from raw
+    events on every run, so their attempt counts, distinct sources and first
+    and last seen dates all reset to a thirty-day view while the per-day data
+    underneath them reached further back. They are now derived from the
+    per-day tables, so they can never hold less than the daily record does.
+
+    first_seen and last_seen are days rather than timestamps as a result,
+    which matches how every page already displays them.
+
+    Distinct sources come from cred_ip_daily, which is exact but starts later
+    than cred_pair_daily does. For a pair only seen before that table existed,
+    the figure falls back to the largest single-day count, which is a floor
+    rather than the true lifetime number. The infrastructure mapping keeps
+    its CRED_DAYS window, which the raw window had been silently cutting to a
+    month.
+    """
     ts = db.TsExpr(con)
     rules, _ = credmod.load_rules()
     if not rules:
         log("credentials: no rules loaded, check TR_CRED_RULES")
-    pairs = db.qall(
-        con,
-        f"""
-        SELECT COALESCE(json_extract(payload,'$.username'),'') AS username,
-               COALESCE(json_extract(payload,'$.password'),'') AS password,
-               COUNT(*) AS attempts,
-               SUM(eventid = 'cowrie.login.success') AS successes,
-               COUNT(DISTINCT src_ip) AS distinct_ips,
-               MIN({ts.iso}) AS first_seen,
-               MAX({ts.iso}) AS last_seen
-        FROM v_events
-        WHERE eventid LIKE 'cowrie.login.%'
-        GROUP BY 1, 2
-        """,
-    )
 
-    con.execute("DELETE FROM cred_pairs")
-    con.execute("DELETE FROM cred_pair_tags")
-    tag_of = {}
-    for p in pairs:
-        tags = credmod.tag_pair(p["username"], p["password"], rules)
-        tag_of[(p["username"], p["password"])] = tags
-        con.execute(
-            "INSERT OR REPLACE INTO cred_pairs"
-            "(username,password,attempts,successes,distinct_ips,first_seen,last_seen)"
-            " VALUES(?,?,?,?,?,?,?)",
-            (
-                p["username"],
-                p["password"],
-                p["attempts"],
-                p["successes"],
-                p["distinct_ips"],
-                p["first_seen"],
-                p["last_seen"],
-            ),
-        )
-        for t in tags:
-            con.execute(
-                "INSERT OR REPLACE INTO cred_pair_tags(username,password,tag) VALUES(?,?,?)",
-                (p["username"], p["password"], t),
-            )
-    con.commit()
-
-    # Campaign to infrastructure mapping, scoped to keep the scan bounded.
-    cut = ts.cutoff(CRED_DAYS)
-    tag_ips = {}
-    for r in con.execute(
-        """
-        SELECT COALESCE(json_extract(payload,'$.username'),'') AS u,
-               COALESCE(json_extract(payload,'$.password'),'') AS p,
-               src_ip, COUNT(*) AS n
-        FROM v_events
-        WHERE eventid LIKE 'cowrie.login.%' AND ts >= ?
-        GROUP BY 1,2,3
-        """,
-        (cut,),
-    ):
-        for t in tag_of.get((r["u"], r["p"]), []):
-            key = (t, r["src_ip"] or "")
-            tag_ips[key] = tag_ips.get(key, 0) + r["n"]
-
-    con.execute("DELETE FROM cred_tag_ips")
-    for (tag, ip), n in tag_ips.items():
-        con.execute(
-            "INSERT OR REPLACE INTO cred_tag_ips(tag,src_ip,attempts) VALUES(?,?,?)",
-            (tag, ip, n),
-        )
-    # Per-day counts, so the window selector moves the numbers and not just
-    # which rows survive the filter.
-    ts2 = db.TsExpr(con)
-    days = days_to_build(con, ts2, "cred_pair_daily", backfill_all)
+    days = days_to_build(con, ts, "cred_pair_daily", backfill_all)
     for day in days:
-        lo, hi = ts2.day_range(day)
+        lo, hi = ts.day_range(day)
         con.execute("DELETE FROM cred_pair_daily WHERE day = ?", (day,))
         con.execute(
             """
@@ -647,8 +612,70 @@ def build_credentials(con, backfill_all=False):
             (day, lo, hi),
         )
         con.commit()
-    log(f"credentials: {len(pairs)} pairs tagged, {len(tag_ips)} tag/IP rows, "
-        f"{len(days)} day(s) of per-day counts")
+
+    exact_ips = {
+        (r[0], r[1]): r[2]
+        for r in con.execute(
+            "SELECT username, password, COUNT(DISTINCT src_ip)"
+            " FROM cred_ip_daily GROUP BY 1, 2"
+        )
+    }
+    pairs = db.qall(
+        con,
+        """
+        SELECT username, password,
+               SUM(attempts) AS attempts, SUM(successes) AS successes,
+               MAX(src_ips) AS peak_daily_ips,
+               MIN(day) AS first_seen, MAX(day) AS last_seen
+        FROM cred_pair_daily
+        GROUP BY 1, 2
+        """,
+    )
+
+    con.execute("DELETE FROM cred_pairs")
+    con.execute("DELETE FROM cred_pair_tags")
+    tag_of = {}
+    for p in pairs:
+        key = (p["username"], p["password"])
+        tags = credmod.tag_pair(p["username"], p["password"], rules)
+        tag_of[key] = tags
+        con.execute(
+            "INSERT OR REPLACE INTO cred_pairs"
+            "(username,password,attempts,successes,distinct_ips,first_seen,last_seen)"
+            " VALUES(?,?,?,?,?,?,?)",
+            (p["username"], p["password"], p["attempts"], p["successes"],
+             max(exact_ips.get(key, 0), p["peak_daily_ips"] or 0),
+             p["first_seen"], p["last_seen"]),
+        )
+        for t in tags:
+            con.execute(
+                "INSERT OR REPLACE INTO cred_pair_tags(username,password,tag) VALUES(?,?,?)",
+                (p["username"], p["password"], t),
+            )
+    con.commit()
+
+    # Campaign to infrastructure mapping over the last CRED_DAYS days of the
+    # per-day table, rather than over whatever raw events happen to remain.
+    cut_day = (dt.datetime.now(dt.timezone.utc).date()
+               - dt.timedelta(days=CRED_DAYS)).isoformat()
+    tag_ips = {}
+    for r in con.execute(
+        "SELECT username, password, src_ip, SUM(attempts) FROM cred_ip_daily"
+        " WHERE day >= ? GROUP BY 1, 2, 3",
+        (cut_day,),
+    ):
+        for t in tag_of.get((r[0], r[1]), []):
+            k = (t, r[2] or "")
+            tag_ips[k] = tag_ips.get(k, 0) + r[3]
+
+    con.execute("DELETE FROM cred_tag_ips")
+    for (tag, ip), n in tag_ips.items():
+        con.execute(
+            "INSERT OR REPLACE INTO cred_tag_ips(tag,src_ip,attempts) VALUES(?,?,?)",
+            (tag, ip, n),
+        )
+    log(f"credentials: {len(pairs)} lifetime pair(s) tagged, {len(tag_ips)} tag/IP "
+        f"row(s), {len(days)} day(s) of per-day counts")
     db.set_state(con, "credentials_built_at", db.utcnow())
     con.commit()
     return len(pairs)
@@ -1458,7 +1485,12 @@ def main():
         if "tunnels" in stages:
             build_tunnels(con, args.backfill_all)
         if "payloads" in stages:
-            build_payloads(con)
+            build_payloads(con, args.backfill_all)
+        # entities before credentials: the credential lifetime tables are
+        # derived from cred_ip_daily, which build_entities writes, and it
+        # reads nothing the credentials stage produces.
+        if "entities" in stages:
+            build_entities(con, args.backfill_all)
         if "credentials" in stages:
             build_credentials(con, args.backfill_all)
         if "fingerprints" in stages:
@@ -1466,8 +1498,6 @@ def main():
             log(f"fingerprints: rebuilt {n} day(s)")
             db.set_state(con, "fingerprints_built_at", db.utcnow())
             con.commit()
-        if "entities" in stages:
-            build_entities(con, args.backfill_all)
         if "stage" in stages:
             n = escmod.rebuild(con)
             nd = escmod.rebuild_daily(con, args.backfill_all, RECENT_DAYS)

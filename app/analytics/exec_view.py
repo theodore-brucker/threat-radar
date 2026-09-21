@@ -236,7 +236,9 @@ def health(con):
         "SELECT MAX(day) day FROM session_facts WHERE authed > 0",
     ) or {}
     last_any = db.qone(con, "SELECT MAX(day) day FROM asn_ip_daily") or {}
-    ever = db.qone(con, "SELECT COUNT(*) n FROM session_facts") or {}
+    # An existence probe, not a count: session_facts is kept indefinitely and
+    # counting it on every page load gets slower every day.
+    ever = db.qone(con, "SELECT EXISTS(SELECT 1 FROM session_facts) n") or {}
 
     sessions_recent = sum(r["sessions"] or 0 for r in recent)
     authed_recent = sum(r["authed"] or 0 for r in recent)
@@ -274,12 +276,20 @@ def health(con):
     elif (db.get_state(con, "last_run") or "") < db.utcnow()[:10]:
         status, message = "warn", "The analytics worker has not run today."
 
+    # Storage never outranks a sensor fault, but it is the only place a full
+    # database or a disk too small for VACUUM would ever be noticed, because
+    # the pruner no longer deletes raw events to make room.
+    storage = db.get_state(con, "storage_status") or ""
+    if status == "ok" and storage:
+        status, message = "warn", storage
+
     return {
         "status": status,
         "message": message,
         "last_event_day": last_any.get("day"),
         "last_auth_day": last_auth.get("day"),
         "lag_days": lag,
+        "storage": storage or None,
         "recent": recent,
         "outages": outages.spans_for_chart(con),
         "personas": persona.spans_for_chart(con),

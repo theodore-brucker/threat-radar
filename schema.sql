@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS raw_events (
   ts        TEXT,
   payload   TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_events_eventid ON raw_events(eventid);
+-- idx_events_eventid was dropped by migration 014: idx_raw_eventid_ts covers it.
 CREATE INDEX IF NOT EXISTS idx_events_src     ON raw_events(src_ip);
 CREATE INDEX IF NOT EXISTS idx_events_ts      ON raw_events(ts);
 CREATE INDEX IF NOT EXISTS idx_events_session ON raw_events(session);
