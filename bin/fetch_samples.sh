@@ -78,3 +78,7 @@ if [ "$new" -eq 0 ] && [ "$have" -eq 0 ]; then
   echo "fetch_samples: sensor returned no samples" >&2
   exit 1
 fi
+# The heartbeat the health view reads. The unit tolerates this script failing
+# so that the analytics still run, which is exactly why a failure needs to be
+# visible somewhere other than the unit state.
+: > .fetched

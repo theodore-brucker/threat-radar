@@ -96,6 +96,7 @@ class PullTests(ProtocolCase):
         self.write("cowrie.json." + day(1), lines(80, "yesterday"))
         self.pull()
         self.assert_mirrors("cowrie.json", "cowrie.json." + day(1))
+        self.assertTrue(os.path.exists(os.path.join(self.spool, ".pulled")))
 
     def test_second_pull_sends_only_the_new_bytes(self):
         self.write("cowrie.json", lines(50, "live"))
@@ -189,7 +190,7 @@ class HostileSensorTests(ProtocolCase):
                          "cowrie.json 10\n", chunk=b"0123456789")
         self.pull()
         self.assertFalse(os.path.exists(outside))
-        self.assertEqual(os.listdir(self.spool), ["cowrie.json"])
+        self.assertEqual(sorted(os.listdir(self.spool)), [".pulled", "cowrie.json"])
         # Only the one valid name was ever asked for.
         chunks = [r for r in self.requested() if r.startswith("chunk")]
         self.assertEqual(chunks, ["chunk cowrie.json 0 10"])
@@ -206,6 +207,8 @@ class HostileSensorTests(ProtocolCase):
             self.assertFalse(os.path.exists(os.path.join(self.spool, "cowrie.json")))
             self.assertTrue("more than requested" in r.stderr or "failed" in r.stderr,
                             r.stderr)
+            # A cycle with a failed request must not refresh the heartbeat.
+            self.assertFalse(os.path.exists(os.path.join(self.spool, ".pulled")))
 
 
 class WrapperTests(ProtocolCase):
@@ -254,7 +257,7 @@ class SampleFetchTests(ProtocolCase):
         env = dict(self.env(), TR_SAMPLE_DIR=dest, SENSOR_TS_IP="192.0.2.1")
         r = subprocess.run([FETCH], env=env, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(sorted(os.listdir(dest)), [good])
+        self.assertEqual(sorted(os.listdir(dest)), [".fetched", good])
         self.assertIn("1 new", r.stdout)
 
     def test_refuses_to_run_without_the_sensor_address(self):

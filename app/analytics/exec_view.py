@@ -7,6 +7,7 @@ from both sides of the comparison.
 """
 
 import datetime as dt
+import os
 
 from . import db
 from . import outages
@@ -195,6 +196,94 @@ def goals(con, days=30, top=6):
 STALE_WARN_DAYS = 1      # nothing today: could be a slow pull
 STALE_FAULT_DAYS = 2     # nothing for two days: delivery is broken
 
+# Stage freshness. The pull and the sample fetch each leave a heartbeat file
+# when they complete, because a stage that fails quietly under a unit that
+# tolerates its failure is otherwise invisible; the sample fetch did exactly
+# that for a day. Thresholds are several missed cycles, not one.
+BASE = os.environ.get("TR_BASE", "/opt/threat-radar")
+PULL_HEARTBEAT = os.path.join(BASE, "spool", ".pulled")
+FETCH_HEARTBEAT = os.path.join(
+    os.environ.get("TR_SAMPLE_DIR", os.path.join(BASE, "data", "samples")), ".fetched")
+PULL_WARN_MIN = 15        # the pull runs every two minutes
+FETCH_WARN_MIN = 180      # the fetch runs before each thirty-minute worker run
+WORKER_WARN_MIN = 120
+EVENTS_WARN_MIN = 60      # the sensor sees thousands of connections a day
+# The July fault at hour resolution: connections without a single login event.
+AUTH_WINDOW_HOURS = 6
+AUTH_MIN_CONNECTS = 30
+
+
+def _minutes_since(when, now):
+    if when is None:
+        return None
+    return max(0, int((now - when).total_seconds() // 60))
+
+
+def _parse_ts(value):
+    if not value:
+        return None
+    try:
+        t = dt.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
+
+
+def _heartbeat(path):
+    try:
+        return dt.datetime.fromtimestamp(os.stat(path).st_mtime, tz=dt.timezone.utc)
+    except OSError:
+        return None
+
+
+def stage_freshness(con, now=None):
+    """When each stage last completed, and the last six hours of auth.
+
+    A missing heartbeat is reported as unknown rather than as stale, so a
+    fresh install or a development copy does not raise an alarm before the
+    stage has ever run.
+    """
+    now = now or dt.datetime.now(dt.timezone.utc)
+    last_event = _parse_ts((db.qone(con, "SELECT MAX(ts) ts FROM raw_events") or {}).get("ts"))
+    since = (now - dt.timedelta(hours=AUTH_WINDOW_HOURS)).strftime("%Y-%m-%dT%H:%M:%S")
+    counts = {
+        r["eventid"]: r["n"]
+        for r in db.qall(
+            con,
+            "SELECT eventid, COUNT(*) n FROM raw_events WHERE eventid IN (?,?,?)"
+            " AND ts >= ? GROUP BY eventid",
+            ("cowrie.session.connect", "cowrie.login.success", "cowrie.login.failed", since),
+        )
+    }
+    stages = {
+        "events": last_event,
+        "pull": _heartbeat(PULL_HEARTBEAT),
+        "samples": _heartbeat(FETCH_HEARTBEAT),
+        "worker": _parse_ts(db.get_state(con, "last_run")),
+    }
+    return {
+        "stages": {
+            k: {"at": v.strftime("%Y-%m-%dT%H:%M:%SZ") if v else None,
+                "minutes_ago": _minutes_since(v, now)}
+            for k, v in stages.items()
+        },
+        "auth_window_hours": AUTH_WINDOW_HOURS,
+        "connects_recent": counts.get("cowrie.session.connect", 0),
+        "logins_recent": counts.get("cowrie.login.success", 0) + counts.get("cowrie.login.failed", 0),
+    }
+
+
+def _stale(fresh, stage, limit):
+    minutes = fresh["stages"][stage]["minutes_ago"]
+    return minutes is not None and minutes > limit
+
+
+def _ago(fresh, stage):
+    minutes = fresh["stages"][stage]["minutes_ago"]
+    if minutes < 120:
+        return f"{minutes} minutes ago"
+    return f"{minutes // 60} hours ago"
+
 
 def health(con):
     """Is the sensor actually working, and is what we are showing current?
@@ -250,6 +339,7 @@ def health(con):
         except ValueError:
             lag = None
 
+    fresh = stage_freshness(con)
     status, message = "ok", "Sensor is receiving traffic and authentications."
     if not ever.get("n"):
         status, message = "fault", "No sessions recorded at all."
@@ -267,14 +357,36 @@ def health(con):
             "three days. That is a sensor fault, not a quiet week. "
             f"Last successful authentication: {last_auth.get('day') or 'never'}."
         )
+    elif (fresh["connects_recent"] >= AUTH_MIN_CONNECTS
+          and fresh["logins_recent"] == 0):
+        status = "fault"
+        message = (
+            f"{fresh['connects_recent']} connections in the last "
+            f"{AUTH_WINDOW_HOURS} hours and not one login event. That is the "
+            f"pattern of a broken userdb, which stops authentication without "
+            f"logging anything at the login stage."
+        )
     elif lag is not None and lag >= STALE_WARN_DAYS:
         status = "warn"
         message = (
             f"Nothing has arrived since {last_any['day']}. That is normal for a "
             f"few hours after midnight UTC and a problem after that."
         )
-    elif (db.get_state(con, "last_run") or "") < db.utcnow()[:10]:
-        status, message = "warn", "The analytics worker has not run today."
+    elif _stale(fresh, "pull", PULL_WARN_MIN):
+        status = "warn"
+        message = (f"The log pull last completed {_ago(fresh, 'pull')}. It runs "
+                   f"every two minutes, so new events are not reaching this site.")
+    elif _stale(fresh, "events", EVENTS_WARN_MIN):
+        status = "warn"
+        message = (f"The pull is running but the newest event is from "
+                   f"{_ago(fresh, 'events')}. The sensor may have stopped logging.")
+    elif _stale(fresh, "samples", FETCH_WARN_MIN):
+        status = "warn"
+        message = (f"The sample fetch last completed {_ago(fresh, 'samples')}, so "
+                   f"new captures are not being collected or submitted.")
+    elif _stale(fresh, "worker", WORKER_WARN_MIN):
+        status = "warn"
+        message = f"The analytics worker last finished {_ago(fresh, 'worker')}."
 
     # Storage never outranks a sensor fault, but it is the only place a full
     # database or a disk too small for VACUUM would ever be noticed, because
@@ -290,6 +402,10 @@ def health(con):
         "last_auth_day": last_auth.get("day"),
         "lag_days": lag,
         "storage": storage or None,
+        "stages": fresh["stages"],
+        "auth_recent": {"hours": fresh["auth_window_hours"],
+                        "connects": fresh["connects_recent"],
+                        "logins": fresh["logins_recent"]},
         "recent": recent,
         "outages": outages.spans_for_chart(con),
         "personas": persona.spans_for_chart(con),

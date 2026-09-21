@@ -61,7 +61,7 @@ rm -f -- .chunk.* pull.tmp
 
 manifest=$(sensor manifest) || { echo "pull: manifest request failed" >&2; exit 1; }
 oldest=$(date -u -d "-$((RETAIN_DAYS - 1)) days" +%F)
-fetched=0 files=0
+fetched=0 files=0 failed=0
 
 # The manifest is read on descriptor 3, not standard input. Each chunk request
 # runs ssh inside this loop, and ssh reads its standard input, so a manifest
@@ -102,17 +102,20 @@ while read -r name size <&3; do
     if ! sensor chunk "$name" "$have" "$want" | head -c "$((want + 1))" > "$tmp"; then
       rm -f -- "$tmp"
       echo "pull: chunk request failed for $name at $have" >&2
+      failed=1
       break
     fi
     got=$(stat -c %s -- "$tmp")
     if [ "$got" -gt "$want" ]; then
       rm -f -- "$tmp"
       echo "pull: sensor sent more than requested for $name, discarded" >&2
+      failed=1
       break
     fi
     if [ "$got" -eq 0 ]; then
       rm -f -- "$tmp"
       echo "pull: empty chunk for $name at $have" >&2
+      failed=1
       break
     fi
     cat -- "$tmp" >> "$name"
@@ -123,3 +126,7 @@ while read -r name size <&3; do
 done 3<<< "$manifest"
 
 echo "pull: $fetched byte(s) from $files file(s) listed"
+# The heartbeat the health view reads. Written only when every request in the
+# cycle succeeded, so a pull that keeps failing lets it go stale and shows up.
+[ "$failed" -eq 0 ] && : > .pulled
+exit 0
