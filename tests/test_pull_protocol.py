@@ -48,7 +48,11 @@ class ProtocolCase(unittest.TestCase):
         # that only the missing bytes crossed the wire.
         self.transport = os.path.join(self.tmp, "transport.sh")
         with open(self.transport, "w") as fh:
-            fh.write("#!/bin/bash\nset -o pipefail\n"
+            # The transport drains its standard input first, because ssh
+            # does. A pull loop that lets the transport inherit the stdin it
+            # reads its manifest from loses every line after the first file
+            # it fetches, and a transport that never reads stdin hides that.
+            fh.write("#!/bin/bash\nset -o pipefail\ncat > /dev/null\n"
                      "PULL_LOGDIR=%r PULL_DLDIR=%r %r | tee >(wc -c >> %r)\n"
                      % (self.logdir, self.dldir, WRAPPER, self.bytes_log))
         os.chmod(self.transport, os.stat(self.transport).st_mode | stat.S_IXUSR)
@@ -128,6 +132,15 @@ class PullTests(ProtocolCase):
         self.pull()
         self.assert_mirrors("cowrie.json", *["cowrie.json." + day(o) for o in range(1, 7)])
 
+    def test_one_pull_fetches_every_file_that_needs_bytes(self):
+        # What happened on the collector: each pull fetched one file and
+        # stopped, because the transport swallowed the rest of the manifest.
+        for offset in (1, 2, 3):
+            self.write("cowrie.json." + day(offset), lines(10, "d%d" % offset))
+        self.write("cowrie.json", lines(5, "live"))
+        self.pull()
+        self.assert_mirrors("cowrie.json", *["cowrie.json." + day(o) for o in (1, 2, 3)])
+
     def test_files_older_than_retention_are_not_requested(self):
         # Otherwise a file the prune deleted would be fetched again, deleted
         # again, and fetched again for as long as the sensor keeps it.
@@ -157,7 +170,7 @@ class HostileSensorTests(ProtocolCase):
             fh.write(chunk)
         self.requests = os.path.join(self.tmp, "requests")
         with open(self.transport, "w") as fh:
-            fh.write("#!/bin/bash\n"
+            fh.write("#!/bin/bash\ncat > /dev/null\n"
                      "echo \"$SSH_ORIGINAL_COMMAND\" >> %r\n"
                      "case \"$SSH_ORIGINAL_COMMAND\" in\n"
                      "  manifest) cat %r ;;\n"

@@ -43,7 +43,9 @@ rm -f -- .*.part
 listing=$(sensor samples-list) || { echo "fetch_samples: listing request failed" >&2; exit 1; }
 new=0 have=0 bad=0 listed=0
 
-while read -r size sha; do
+# The listing is read on descriptor 3 so that no request made inside the loop
+# can consume it; ssh reads standard input unless told otherwise.
+while read -r size sha <&3; do
   [ -n "${sha:-}" ] || continue
   listed=$((listed + 1))
   [ "$listed" -le "$MAX_LISTED" ] || break
@@ -68,7 +70,7 @@ while read -r size sha; do
   mv -- "$tmp" "$sha"
   chmod 640 -- "$sha"
   new=$((new + 1))
-done <<< "$listing"
+done 3<<< "$listing"
 
 total=$(find . -maxdepth 1 -type f ! -name '.*' | wc -l)
 echo "fetch_samples: ${new} new, ${have} already local, ${bad} failed, ${total} total"

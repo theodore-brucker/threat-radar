@@ -49,7 +49,7 @@ sensor() {
     return
   fi
   : "${SENSOR_TS_IP:?SENSOR_TS_IP not set in $CONF}"
-  ssh -T -i "$KEY" -p 2200 \
+  ssh -n -T -i "$KEY" -p 2200 \
       -o IdentitiesOnly=yes -o BatchMode=yes \
       -o UserKnownHostsFile="$KNOWN" -o StrictHostKeyChecking=yes \
       -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 \
@@ -63,7 +63,11 @@ manifest=$(sensor manifest) || { echo "pull: manifest request failed" >&2; exit 
 oldest=$(date -u -d "-$((RETAIN_DAYS - 1)) days" +%F)
 fetched=0 files=0
 
-while read -r name size; do
+# The manifest is read on descriptor 3, not standard input. Each chunk request
+# runs ssh inside this loop, and ssh reads its standard input, so a manifest
+# on stdin was swallowed by the first request and every pull stopped after
+# fetching one file. ssh also gets -n above, so either guard alone would do.
+while read -r name size <&3; do
   [ -n "${name:-}" ] || continue
   files=$((files + 1))
   if [ "$files" -gt "$MAX_FILES" ]; then
@@ -116,6 +120,6 @@ while read -r name size; do
     have=$((have + got))
     fetched=$((fetched + got))
   done
-done <<< "$manifest"
+done 3<<< "$manifest"
 
 echo "pull: $fetched byte(s) from $files file(s) listed"
