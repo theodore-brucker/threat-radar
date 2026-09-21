@@ -220,7 +220,7 @@ class WrapperTests(ProtocolCase):
                         "chunk cowrie.json 0 1e9", "chunk cowrie.json 99999 10",
                         "chunk cowrie.json 0", "chunk * 0 10", "samples-get ../x",
                         "samples-get " + "g" * 64, "manifest extra", "rm -rf /",
-                        "logs; id", "$(id)"):
+                        "logs", "logs; id", "$(id)", ""):
             r = self.ask(request)
             self.assertNotEqual(r.returncode, 0, "accepted: %r" % request)
 

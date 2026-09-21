@@ -11,7 +11,9 @@ Group=radar
 WorkingDirectory=/opt/threat-radar
 Environment=TR_BASE=/opt/threat-radar
 EnvironmentFile=-/etc/threat-radar/web.env
-ExecStart=/opt/threat-radar/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080
+# nginx replaces the Server header on everything it proxies; the flag covers a
+# request made straight to the loopback port.
+ExecStart=/opt/threat-radar/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080 --no-server-header
 Restart=always
 RestartSec=10
 

@@ -10,12 +10,9 @@
 #   chunk NAME OFFSET LENGTH    LENGTH bytes of NAME starting at OFFSET
 #   samples-list                one "size sha256" line per capture
 #   samples-get SHA256          the capture with that name
-#   logs                        the previous protocol, a tar of the live log
-#                               and the newest rotated one; kept only until
-#                               the collector runs the manifest protocol, and
-#                               to be removed after that
 #
-# The manifest and chunk requests replace the tar. The tar re-sent the whole
+# The manifest and chunk requests replaced a tar of the whole live log and
+# the whole newest rotated log. The tar re-sent the whole
 # live log and the whole newest rotated log on every pull, which at a
 # two-minute interval came to roughly 35 to 40 GB a day for a few megabytes of
 # new events, and it only ever offered the newest rotated file, so a collector
@@ -78,20 +75,6 @@ case "$cmd" in
     size=$(stat -c %s -- "$file")
     [ "$size" -gt 0 ] && [ "$size" -le "$MAX_SAMPLE" ] || exit 4
     exec cat -- "$file"
-    ;;
-
-  logs|"")
-    # Previous protocol, see the header. Cowrie writes cowrie.json
-    # continuously, so it is copied before being tarred; tarring it in place
-    # returns "file changed as we read it" and the client dropped the cycle.
-    [ "${#argv[@]}" -le 1 ] || refuse "logs takes no arguments"
-    tmp=$(mktemp -d /tmp/pull-logs.XXXXXX)
-    trap 'rm -rf "$tmp"' EXIT
-    cp -- "$LOGDIR/cowrie.json" "$tmp/cowrie.json"
-    newest=$(find "$LOGDIR" -maxdepth 1 -type f -name 'cowrie.json.20*' -printf '%T@ %f\n' \
-             | sort -rn | head -1 | cut -d' ' -f2)
-    [ -n "$newest" ] && cp -- "$LOGDIR/$newest" "$tmp/$newest"
-    tar -cf - -C "$tmp" .
     ;;
 
   *)

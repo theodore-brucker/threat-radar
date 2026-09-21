@@ -57,6 +57,17 @@ blocks the persona paths, so an overlaid checkout cannot commit them back here.
   `txtcmds_path` must be absolute; the shipped default resolves relative to
   WorkingDirectory and misses this tree.
 
+## Upgrading Cowrie
+
+`/opt/cowrie` is a git checkout of upstream with the two patches in
+`patches/` applied. `bin/upgrade-cowrie.sh TAG PATCH_DIR` moves it to another
+tag: it refuses if tracked files differ from upstream anywhere outside the
+patch set, or if the target adds a file that exists here untracked, and it
+proves the patches apply to the target before touching anything. It writes a
+tarball of everything except `var/` first, and rolling back is the same script
+with the previous tag. It does not restart Cowrie, because that is the step
+worth watching.
+
 ## Ownership on the sensor
 
 The account Cowrie runs as owns `var/` and nothing else. Everything else in

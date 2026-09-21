@@ -54,7 +54,10 @@ else
 fi
 
 echo "==> syncing dependencies"
-"$REPO/venv/bin/pip" install --quiet --no-cache-dir -r "$REPO/requirements.txt"
+# requirements.txt pins every transitive dependency with its hashes, so a
+# package that changed on the index, or one the lock does not list, fails the
+# install instead of landing silently on the collector.
+"$REPO/venv/bin/pip" install --quiet --no-cache-dir --require-hashes -r "$REPO/requirements.txt"
 
 echo "==> ownership"
 chown -R root:root "$REPO"

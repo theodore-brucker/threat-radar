@@ -1,0 +1,11 @@
+# Direct runtime dependencies. requirements.txt is generated from this file
+# with every transitive dependency pinned and hashed; do not edit it by hand.
+#
+#   uv pip compile requirements.in --universal --generate-hashes \
+#     --python-version 3.12 -o requirements.txt
+#
+# fastapi and uvicorn serve the dashboard; geoip2 reads the MaxMind databases
+# during enrichment. Nothing else the shipped code imports is third-party.
+fastapi>=0.141.1
+uvicorn>=0.53.0
+geoip2>=5.3.0

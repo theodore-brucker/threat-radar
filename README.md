@@ -71,21 +71,29 @@ See `SETUP.md` for build notes.
 
 ## Tests
 
-The suite uses only the standard library `unittest` plus the packages already
-in `requirements.txt`. Every test builds a throwaway database from
-`schema.sql` and the real migrations, and no test touches the network: the
-worker's HTTP helper is replaced with a scripted fake. Run it from the repo
-root, locally or on the Pi:
+Dependencies are locked with hashes. `requirements.txt` is the runtime lock
+the collector installs with `--require-hashes`, generated from
+`requirements.in`; `requirements-dev.txt` adds the test tools, constrained to
+the same versions. Every test builds a throwaway database from `schema.sql`
+and the real migrations, and none touches the network: the worker's HTTP
+helper is replaced with a scripted fake, and the pull transport runs the real
+sensor wrapper locally. Run the suite from the repo root in a separate
+environment rather than the collector's own:
 
 ```bash
-cd /opt/threat-radar && sudo -u radar venv/bin/python -m unittest discover -s tests -t .
+python3 -m venv .venv
+.venv/bin/pip install --require-hashes -r requirements.txt -r requirements-dev.txt
+.venv/bin/python -m pytest
 ```
 
-Coverage is organised by feature: VirusTotal submission (`test_vt_submit`),
-MalwareBazaar submission (`test_bazaar`), VirusTotal snapshots and refresh
-cadence (`test_snapshots`), durable capture context (`test_provenance`),
-contribution attribution and counts (`test_contributions`), and the API
-surface (`test_api`).
+Coverage is organised by the failure each area defends against: VirusTotal
+and MalwareBazaar submission (`test_vt_submit`, `test_bazaar`), snapshots and
+refresh cadence (`test_snapshots`), durable capture context
+(`test_provenance`), contribution counts (`test_contributions`), lifetime
+tables surviving the raw window (`test_retention`), what Cowrie does with the
+userdb (`test_userdb`, which cross-checks against the real parser where Cowrie
+is installed), the pull protocol against a hostile sensor
+(`test_pull_protocol`), and the API surface (`test_api`).
 
 ## Licence
 

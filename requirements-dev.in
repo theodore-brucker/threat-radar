@@ -1,0 +1,10 @@
+# Test dependencies, constrained to the runtime lock so the suite runs against
+# exactly the versions the collector does. httpx is here rather than in the
+# runtime file because only fastapi.testclient needs it.
+#
+#   uv pip compile requirements-dev.in --universal --generate-hashes \
+#     --python-version 3.12 -o requirements-dev.txt
+-c requirements.txt
+pytest
+pytest-cov
+httpx
