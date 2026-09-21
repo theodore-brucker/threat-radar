@@ -3,8 +3,10 @@
 Two rules govern this module, because the site is intended to go public:
 
   1. No endpoint returns sample bytes. Text samples are returned as decoded
-     text with control characters stripped; binaries return metadata and
-     filtered strings only. There is no download path.
+     text with control characters stripped and with URLs and IPv4 addresses
+     defanged, so a published dropper is readable but not a working one;
+     binaries return metadata and filtered strings only. There is no
+     download path.
   2. Every value here originated with an attacker. Nothing is interpolated
      into SQL and nothing is trusted for length or encoding.
 """
@@ -260,6 +262,29 @@ def _packer(data):
     return out
 
 
+_SCHEME = re.compile(r"(?i)\b(h)tt(ps?)://|\b(f)tp://")
+_URL_HOST = re.compile(r"(?i)\b(hxxps?://|fxp://)([^/\s:'\"<>]+)")
+_IPV4 = re.compile(r"\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b")
+
+
+def _safe_text(body):
+    """Decode a text sample for display.
+
+    Control characters are removed, so nothing reaches a browser or a
+    terminal that renders it as anything but text. URL schemes become hxxp,
+    hxxps and fxp, the dots in URL hosts and in IPv4 addresses are bracketed,
+    and the result is still readable as analysis but cannot be pasted into a
+    shell and run. Bare hostnames without a scheme are left alone, because
+    telling them apart from ordinary dotted words would guess wrong often.
+    """
+    text = body.decode("utf-8", "replace")
+    text = "".join(c for c in text if c in "\n\t" or 32 <= ord(c) < 127 or ord(c) > 159)
+    text = _SCHEME.sub(lambda m: (m.group(1) + "xx" + m.group(2) + "://") if m.group(1)
+                       else (m.group(3) + "xp://"), text)
+    text = _URL_HOST.sub(lambda m: m.group(1) + m.group(2).replace(".", "[.]"), text)
+    return _IPV4.sub(r"\1[.]\2[.]\3[.]\4", text)
+
+
 def _identify(head):
     if head[:4] == b"\x7fELF":
         bits = {1: "32-bit", 2: "64-bit"}.get(head[4], "?")
@@ -389,7 +414,8 @@ def sample_detail(con, shasum):
                     "note": "too small to be a functioning payload; recorded "
                             "as an observation, not analysed as a specimen"})
         if is_text:
-            out["text"] = body.decode("utf-8", "replace")
+            out["text"] = _safe_text(body)
+            out["defanged"] = True
             out["line_count"] = out["text"].count("\n") + 1
         return out
     if not is_text:
@@ -414,10 +440,9 @@ def sample_detail(con, shasum):
         out["note"] = "high entropy, consistent with packing or encryption"
 
     if is_text:
-        text = body.decode("utf-8", "replace")
-        text = "".join(c for c in text if c in "\n\t" or 32 <= ord(c) < 127
-                       or ord(c) > 159)
+        text = _safe_text(body)
         out["text"] = text
+        out["defanged"] = True
         out["truncated"] = size > MAX_TEXT_BYTES
         out["line_count"] = text.count("\n") + 1
     else:

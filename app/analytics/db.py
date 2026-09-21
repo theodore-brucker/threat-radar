@@ -16,6 +16,9 @@ def connect_ro(path: str = None) -> sqlite3.Connection:
     con = sqlite3.connect(f"file:{p}?mode=ro", uri=True, timeout=15)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA busy_timeout=15000")
+    # A second guard behind mode=ro: SQLite refuses any statement that would
+    # change the database, whatever the file permissions happen to allow.
+    con.execute("PRAGMA query_only=ON")
     return con
 
 

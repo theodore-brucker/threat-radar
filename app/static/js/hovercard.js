@@ -64,12 +64,14 @@ function paint(card, anchor) {
   place(anchor);
 }
 
-/* Fetch every entity on the page in one call. Anything the API does not
-   return is cached as null so we never ask for it again. */
-async function warm(keys) {
-  const missing = keys.filter((k) => !cache.has(k));
-  if (!missing.length) return;
-  const items = missing.map((k) => {
+/* Fetch the cards for every entity on the page, in batches. One request for
+   a large page can pass the 16 KB body limit nginx enforces, and a refused
+   request used to leave every card on the page empty. Anything the API does
+   not return is cached as null so it is never asked for again. */
+const CARD_BATCH = 100;
+
+async function warmBatch(batch) {
+  const items = batch.map((k) => {
     const i = k.indexOf(":");
     return { type: k.slice(0, i), value: k.slice(i + 1) };
   });
@@ -82,10 +84,18 @@ async function warm(keys) {
     if (!res.ok) throw new Error(res.status);
     const body = await res.json();
     const got = ((body.data || body).cards) || {};
-    for (const k of missing) cache.set(k, got[k] || null);
+    for (const k of batch) cache.set(k, got[k] || null);
   } catch (err) {
     // No cards is a degraded page, not a broken one: links still work.
-    for (const k of missing) cache.set(k, null);
+    for (const k of batch) cache.set(k, null);
+  }
+}
+
+async function warm(keys) {
+  const missing = keys.filter((k) => !cache.has(k));
+  if (!missing.length) return;
+  for (let i = 0; i < missing.length; i += CARD_BATCH) {
+    await warmBatch(missing.slice(i, i + CARD_BATCH));
   }
   // A card may have arrived while its link was already being hovered.
   if (current && cache.get(current.key)) paint(cache.get(current.key), current.el);

@@ -73,13 +73,19 @@ def process_file(conn, path: str) -> int:
     if size == offset:
         return 0
     n = 0
-    with open(path, "r", encoding="utf-8", errors="replace") as f:
+    # Bytes, not text. The offset has to track the file exactly, because the
+    # pull appends raw bytes and the next pass resumes from here. Text mode
+    # advanced by the re-encoded length of each decoded line, which overshoots
+    # whenever a line holds an invalid byte, so the next pass started inside a
+    # line and lost it. Decoding with "replace" afterwards keeps the line hash
+    # identical to what text mode produced, so deduplication still matches.
+    with open(path, "rb") as f:
         f.seek(offset)
-        for line in f:
-            if not line.endswith("\n"):
+        for raw in f:
+            if not raw.endswith(b"\n"):
                 break  # partial trailing line; pick it up next pass
-            ingest_line(conn, line)
-            offset += len(line.encode("utf-8", "replace"))
+            ingest_line(conn, raw.decode("utf-8", "replace"))
+            offset += len(raw)
             n += 1
     conn.execute(
         "INSERT INTO ingest_state (filename, byte_offset) VALUES (?, ?)"

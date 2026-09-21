@@ -38,7 +38,7 @@ export function currentPath() {
 export const STAGE_COLORS = ["--stage-0", "--stage-1", "--stage-2", "--stage-3", "--stage-4"];
 export const STAGE_LABELS = [
   "connected only", "authenticated", "reached a shell",
-  "moved a file", "confirmed malware",
+  "moved a file", "flagged malware",
 ];
 export const ALL_TIME = 3650;
 
@@ -156,13 +156,31 @@ export function bytes(n) {
 
 /* ---------- dom ---------- */
 
+/* Attributes that navigate or load. Every value the app sets is a relative
+   route, a fragment, or an https link to a public service, so anything else
+   is refused rather than trusted: no javascript:, no data:, and no
+   protocol-relative //host that would inherit the page's scheme. Today no
+   attacker-controlled string reaches these, and this keeps it that way. */
+const URL_ATTRS = new Set(["href", "src", "action", "formaction", "xlink:href"]);
+function safeUrl(v) {
+  const s = String(v).trim();
+  return (s.startsWith("/") && !s.startsWith("//")) || s.startsWith("#")
+    || s.startsWith("?") || /^https:\/\//i.test(s);
+}
+
 export function h(tag, attrs = {}, children = []) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v === null || v === undefined || v === false) continue;
+    const key = k.toLowerCase();
     if (k === "class") el.className = v;
     else if (k === "text") el.textContent = v;
-    else if (k.startsWith("on") && typeof v === "function") el.addEventListener(k.slice(2), v);
+    else if (key.startsWith("on")) {
+      // Handlers are attached as functions only; a string would be inline
+      // script, which the content security policy blocks anyway.
+      if (typeof v === "function") el.addEventListener(k.slice(2), v);
+    }
+    else if (URL_ATTRS.has(key) && !safeUrl(v)) continue;
     else el.setAttribute(k, v === true ? "" : v);
   }
   for (const c of [].concat(children)) {
