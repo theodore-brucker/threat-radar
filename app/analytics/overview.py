@@ -5,7 +5,6 @@ waits on raw_events.
 """
 
 from . import db
-from . import escalation
 
 
 def headline(con, days=30):

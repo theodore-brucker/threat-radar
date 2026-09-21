@@ -25,7 +25,8 @@ def eligible(case, n, with_file=True):
 class AccountErrorTests(DBTestCase):
 
     def test_user_unknown_stops_stage_and_records_nothing(self):
-        a, b = eligible(self, 10), eligible(self, 11)
+        eligible(self, 10)
+        eligible(self, 11)
         self.http.on(is_mb_lookup, NOT_FOUND)
         self.http.on(is_mb_upload, (200, {
             "error": "non-json response",
@@ -98,7 +99,7 @@ class UploadTests(DBTestCase):
         self.assertEqual(row["permalink"], f"https://bazaar.abuse.ch/sample/{s}/")
 
     def test_upload_metadata_is_attributed_and_clean(self):
-        s = eligible(self, 51)
+        eligible(self, 51)
         self.http.on(is_mb_lookup, NOT_FOUND)
         self.http.on(is_mb_upload, (200, {"query_status": "inserted"}))
 

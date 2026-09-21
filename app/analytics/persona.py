@@ -10,7 +10,6 @@ where the boundaries fall for drawing them, and whether a comparison spans
 one. Same shape as outages.py, deliberately.
 """
 
-import datetime as dt
 
 from . import db
 
@@ -100,15 +99,3 @@ def comparability(con, current_days, prior_days):
     }
 
 
-def day_span(start_day, end_day):
-    """Inclusive YYYY-MM-DD list, for callers that need to iterate."""
-    try:
-        a = dt.date.fromisoformat(start_day)
-        b = dt.date.fromisoformat(end_day)
-    except (TypeError, ValueError):
-        return []
-    out, cur = [], a
-    while cur <= b:
-        out.append(cur.isoformat())
-        cur += dt.timedelta(days=1)
-    return out

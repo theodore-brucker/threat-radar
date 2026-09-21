@@ -10,7 +10,6 @@ with a LIMIT. Nothing here scans raw_events, and the whole endpoint is
 capped so a one-character query cannot turn into a table scan on the Pi.
 """
 
-import re
 
 from . import db
 

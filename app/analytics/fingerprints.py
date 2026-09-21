@@ -59,12 +59,6 @@ def describe(hassh):
     return KNOWN.get((hassh or "").lower())
 
 
-def known_label(hassh):
-    """Just the display name, for callers that only need text."""
-    rec = describe(hassh)
-    return rec["label"] if rec else None
-
-
 def overview(con, days=30, limit=25):
     days = db.clamp_days(days, default=30)
     if not db.table_exists(con, "client_fp_daily"):

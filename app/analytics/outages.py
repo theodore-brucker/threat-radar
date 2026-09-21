@@ -49,10 +49,6 @@ def excluded_days(con, field=None):
     return out
 
 
-def covers(con, day, field=None):
-    return day in excluded_days(con, field)
-
-
 def spans_for_chart(con):
     """Start and end days for drawing the gap band."""
     return [

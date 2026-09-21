@@ -311,7 +311,6 @@ def rebuild_daily(con, backfill_all=False, recent_days=3):
     answers "how far did it get during the window I am looking at", which is
     what every list view and the map actually need.
     """
-    ts = db.TsExpr(con)
     row = con.execute("SELECT MIN(day) lo, MAX(day) hi FROM session_facts").fetchone()
     if not row or not row[0]:
         return 0

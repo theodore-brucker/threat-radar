@@ -6,7 +6,6 @@ import unittest
 
 from tests.support import DBTestCase, iso, sha
 from app.analytics import contributions as contrib
-from app.analytics import db
 
 
 class VerifyFirstTests(unittest.TestCase):

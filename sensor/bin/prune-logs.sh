@@ -15,7 +15,8 @@ find . -maxdepth 1 -name 'cowrie.json.20*' -mtime "+${RETAIN_DAYS}" -print -dele
 while :; do
   SIZE_MB=$(du -sm "$LOGDIR" | cut -f1)
   [ "$SIZE_MB" -le "$MAX_MB" ] && break
-  OLDEST=$(ls -1tr cowrie.json.20* 2>/dev/null | head -1)
+  OLDEST=$(find . -maxdepth 1 -name 'cowrie.json.20*' -printf '%T@ %f\n' 2>/dev/null \
+           | sort -n | head -1 | cut -d' ' -f2)
   [ -z "${OLDEST:-}" ] && break
   echo "size cap ${SIZE_MB}MB > ${MAX_MB}MB, removing $OLDEST"
   rm -f "$OLDEST"

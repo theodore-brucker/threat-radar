@@ -10,10 +10,10 @@ view. Detail endpoints for a single hash or address may touch raw_events
 because they are bounded by an indexed equality.
 """
 
-import os
+
+import logging
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import FileResponse
 
 from app.analytics import asn as asnmod
 from app.analytics import credentials as credmod
@@ -34,21 +34,17 @@ from app.analytics import spikes as spikemod
 from app.analytics import tunnels as tunnelmod
 
 router = APIRouter()
-
-STATIC = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static"
-)
-SHELL = os.path.join(STATIC, "index.html")
-
-PAGES = ("/", "/sources", "/credentials", "/payloads", "/tunnels",
-         "/method", "/sessions")
+log = logging.getLogger("radar.site")
 
 
 def _con():
     try:
         return db.connect_ro()
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"database unavailable: {exc}")
+        # The reason goes to the service log, not the response: the exception
+        # text carries the database path, which a caller has no use for.
+        log.warning("database unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail="database unavailable") from exc
 
 
 def ok(data, days=None):
@@ -56,29 +52,6 @@ def ok(data, days=None):
     if days is not None:
         body["window_days"] = days
     return body
-
-
-# --------------------------------------------------------------------------
-# pages
-# --------------------------------------------------------------------------
-
-@router.get("/", include_in_schema=False)
-@router.get("/sources", include_in_schema=False)
-@router.get("/credentials", include_in_schema=False)
-@router.get("/payloads", include_in_schema=False)
-@router.get("/tunnels", include_in_schema=False)
-@router.get("/method", include_in_schema=False)
-@router.get("/sessions", include_in_schema=False)
-@router.get("/session/{session}", include_in_schema=False)
-@router.get("/sample/{shasum}", include_in_schema=False)
-@router.get("/ip/{value}", include_in_schema=False)
-@router.get("/asn/{value}", include_in_schema=False)
-@router.get("/credential/{value}", include_in_schema=False)
-@router.get("/hassh/{value}", include_in_schema=False)
-@router.get("/url/{value}", include_in_schema=False)
-@router.get("/day/{value}", include_in_schema=False)
-def shell():
-    return FileResponse(SHELL)
 
 
 # --------------------------------------------------------------------------

@@ -35,7 +35,7 @@ def summary(con, days=30):
     cut = ts.cutoff(days)
     row = db.qone(
         con,
-        f"""
+        """
         SELECT
           SUM(eventid = ?) AS downloads,
           SUM(eventid = ?) AS uploads,

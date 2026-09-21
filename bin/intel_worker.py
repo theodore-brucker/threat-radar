@@ -746,7 +746,8 @@ def build_entities(con, backfill_all=False):
 
 def _remaining(con, source, per_run, daily_cap):
     """Per-run budget clipped by what today has already spent. The counter key
-    carries the date, so it ages out on its own."""
+    carries the date, so each day starts from zero, and _spend clears keys
+    older than a week so they do not accumulate."""
     used = int(db.get_state(con, f"quota_{source}_{db.utcnow()[:10]}", 0) or 0)
     return min(per_run, max(0, daily_cap - used))
 
@@ -755,6 +756,13 @@ def _spend(con, source, n=1):
     key = f"quota_{source}_{db.utcnow()[:10]}"
     used = int(db.get_state(con, key, 0) or 0)
     db.set_state(con, key, used + n)
+    # One key per service per day, and nothing else ever deletes them.
+    cutoff = (dt.datetime.now(dt.timezone.utc).date() - dt.timedelta(days=7)).isoformat()
+    con.execute(
+        "DELETE FROM insights_state WHERE key LIKE 'quota!_%' ESCAPE '!'"
+        " AND substr(key, -10) < ?",
+        (cutoff,),
+    )
     con.commit()
 
 
