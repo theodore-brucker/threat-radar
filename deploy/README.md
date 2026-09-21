@@ -51,7 +51,8 @@ held the API keys it never uses.
 `deploy/systemd/` holds the installed units. Each one is confined to what it
 actually needs: no capabilities, no new privileges, a read-only filesystem
 apart from one or two `ReadWritePaths`, a system call filter, and no network
-at all for the four units that do not use one. Only the insights worker
+at all for ingest, enrichment and pruning; the dashboard may use the
+loopback interface and nothing else. Only the insights worker
 reaches the internet, for reputation lookups and submissions.
 
 Drop-ins under `/etc/systemd/system/radar-*.service.d/` override these files.
