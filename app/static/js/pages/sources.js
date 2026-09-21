@@ -38,7 +38,7 @@ export async function render() {
       { label: "sources in window", value: num(inWindow) },
       { label: "reached a shell", value: num((totals[2] || 0) + (totals[3] || 0) + (totals[4] || 0)) },
       { label: "moved a file", value: num((totals[3] || 0) + (totals[4] || 0)) },
-      { label: "confirmed malware", value: num(totals[4] || 0), tone: "bad" },
+      { label: "flagged malware", value: num(totals[4] || 0), tone: "bad" },
     ]),
 
     panel("Networks by what their traffic did",

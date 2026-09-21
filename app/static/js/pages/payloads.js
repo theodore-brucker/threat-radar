@@ -92,8 +92,9 @@ export async function render() {
           + "industry has never seen before is sent upstream so other defenders benefit."
         : "Every file a session moved, rolled up by hash and source URL, with VirusTotal "
           + "and URLhaus standings attached. Hashes VirusTotal returns 404 on are uploaded "
-          + "there, and confirmed malware under ten days old goes to MalwareBazaar under a "
-          + "named account, which makes the sensor a contributor rather than only a consumer." }),
+          + "there, and anything captured in the last ten days that at least one engine "
+          + "flags goes to MalwareBazaar under a named account, which makes the sensor a "
+          + "contributor rather than only a consumer." }),
     ]),
 
     panel("Contribution loop", "From capture to upstream submission.", [

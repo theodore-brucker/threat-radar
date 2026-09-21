@@ -113,7 +113,7 @@ async function execView(d) {
         value: num(head.unique_samples),
         trend: t.captured,
         alarmOn: "up",
-        note: `${num(head.flagged_samples)} confirmed malicious by external analysis.`,
+        note: `${num(head.flagged_samples)} flagged by at least one VirusTotal engine or listed by URLhaus.`,
       }),
     ]),
 
@@ -124,7 +124,8 @@ async function execView(d) {
       [funnelExec(d.rail, odds)]),
 
     panel("Where the pressure comes from",
-      "Hollow points stopped at the password prompt. Filled points got inside.",
+      "Hollow points stopped at the password prompt. Filled points got inside. "
+        + "Locations are where the infrastructure is hosted, not where its operators are.",
       [mapNode,
        takeaway([
          "Attack traffic is not evenly spread. ",
@@ -219,7 +220,8 @@ async function analystView(d) {
       "Click a stage to filter the map and the tables below it.",
       [railFull(d.rail)]),
     panel("Where the escalation happens",
-      "One point per source, capped at 60, ranked by stage then volume.",
+      "One point per source, capped at 60, ranked by stage then volume. Locations "
+        + "are where the infrastructure is hosted, not where its operators are.",
       [mapNode]),
     panel("Daily volume",
       spikes.length ? `${spikes.length} labelled surge(s).` : "No surge crossed the threshold.",

@@ -1,8 +1,8 @@
 # Threat Radar
 
-A self-hosted SSH honeypot and threat intelligence pipeline. A hardened cloud sensor absorbs real attack traffic, a Raspberry Pi turns it into structured intelligence, and a dashboard tells the story from first connection to confirmed malware.
+A self-hosted SSH honeypot and threat intelligence pipeline. A hardened cloud sensor absorbs real attack traffic, a Raspberry Pi turns it into structured intelligence, and a dashboard tells the story from first connection to flagged malware.
 
-Over 1.4 million events from 4,600+ distinct source addresses in the current retention window, with captured samples contributed back to VirusTotal.
+Captured samples are contributed back to VirusTotal and MalwareBazaar. The dashboard reads thirty days of raw events plus per-day rollups that are kept indefinitely, so trends outlive the raw window.
 
 ## How it works
 
@@ -13,9 +13,9 @@ Internet ──> Hetzner VPS (Cowrie honeypot, nftables redirect 22 -> 2222)
              Raspberry Pi 5
                  ├─ ingest.py      idempotent JSON -> SQLite (WAL)
                  ├─ enrich.py      GeoLite2 city + ASN tagging
-                 ├─ intel_worker   fact tables, spike attribution,
+                 ├─ intel_worker   fact tables, spike breakdown,
                  │                 VirusTotal + URLhaus reputation
-                 ├─ prune.py       age and size retention caps
+                 ├─ prune.py       age retention, storage warnings
                  └─ FastAPI + nginx dashboard (LAN only)
 ```
 
@@ -31,7 +31,7 @@ Every source is reduced to the furthest stage it reached:
 | 1 | Authenticated |
 | 2 | Reached a shell |
 | 3 | Transferred a file |
-| 4 | Transferred confirmed malware |
+| 4 | Transferred flagged malware, meaning at least one VirusTotal engine or a URLhaus listing |
 
 That single number colors the map, filters every table, and frames the site's narrative: thousands of sources knock, a fraction get in, and a handful actually drop something worth analyzing.
 
@@ -68,6 +68,16 @@ Python 3 / FastAPI / SQLite (WAL) on the Pi, Cowrie on Ubuntu behind nftables on
 Deployment is a git pull: the Pi tracks this repo through a read-only deploy key, and `deploy/update.sh` fetches, syncs dependencies, restarts services, and health-checks the API.
 
 See `SETUP.md` for build notes.
+
+## Documentation
+
+- `ARCHITECTURE.md`: the components, the trust boundaries between them, the
+  threats each defence answers, and the risks that remain.
+- `DATA.md`: what is collected, how long it is kept, what is shared with
+  VirusTotal and MalwareBazaar, and what the dashboard shows.
+- `SECURITY.md`: what is in scope for a report, how to report it, and the
+  properties the project treats as non-negotiable.
+- `SETUP.md` and `deploy/README.md`: building and running both hosts.
 
 ## Tests
 
