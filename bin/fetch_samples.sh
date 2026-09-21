@@ -1,41 +1,78 @@
 #!/usr/bin/env bash
-# Pull Cowrie captures from the sensor over the existing forced-command key.
-# No inference: if config is missing this fails loudly rather than skipping.
+# Pull Cowrie captures from the sensor over the collector's forced-command key.
+#
+# Runs as the insights worker's ExecStartPre. The sensor address comes from
+# the unit's environment, the same pull.env the log pull reads. An earlier
+# version sourced a combined env file directly, and when that file was split
+# by consumer this script lost the address and failed on every run without
+# anything noticing, because the unit tolerates its failure on purpose.
+#
+# The sensor is the host this project exists to have attacked, so nothing it
+# returns is trusted: every listed name must be a sha256 before it touches a
+# path, every download is capped, and a file is kept only if its content
+# hashes to its name.
 set -euo pipefail
-CONF=/etc/threat-radar.env
-[ -r "$CONF" ] && . "$CONF"
-: "${SENSOR_TS_IP:?SENSOR_TS_IP not set in /etc/threat-radar.env}"
+
+: "${SENSOR_TS_IP:?SENSOR_TS_IP not set; the unit should read /etc/threat-radar/pull.env}"
 
 DEST="${TR_SAMPLE_DIR:-/opt/threat-radar/data/samples}"
-KEY=/opt/threat-radar/.ssh_pull
-KH=/opt/threat-radar/.ssh_known_hosts
-SSH_OPTS=(-n -T -i "$KEY" -p 2200 -o UserKnownHostsFile="$KH"
-          -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=15)
+BASE="${TR_BASE:-/opt/threat-radar}"
+KEY="$BASE/.ssh_pull"
+KNOWN="$BASE/.ssh_known_hosts"
+MAX_SAMPLE=$((32 * 1024 * 1024))
+MAX_LISTED=10000
+SHA_RE='^[0-9a-f]{64}$'
+NUM_RE='^[0-9]{1,12}$'
 
-cd / || exit 1
+sensor() {
+  if [ -n "${TR_PULL_TRANSPORT:-}" ]; then
+    SSH_ORIGINAL_COMMAND="$*" "$TR_PULL_TRANSPORT"
+    return
+  fi
+  timeout 120 ssh -n -T -i "$KEY" -p 2200 \
+      -o IdentitiesOnly=yes -o BatchMode=yes \
+      -o UserKnownHostsFile="$KNOWN" -o StrictHostKeyChecking=yes \
+      -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 \
+      cowrie@"$SENSOR_TS_IP" "$*"
+}
+
 mkdir -p "$DEST"
-new=0; have=0; bad=0
+cd "$DEST"
+rm -f -- .*.part
+
+listing=$(sensor samples-list) || { echo "fetch_samples: listing request failed" >&2; exit 1; }
+new=0 have=0 bad=0 listed=0
 
 while read -r size sha; do
   [ -n "${sha:-}" ] || continue
-  if [ -s "${DEST}/${sha}" ]; then have=$((have+1)); continue; fi
-  tmp="${DEST}/.${sha}.part"
-  if ! ssh "${SSH_OPTS[@]}" cowrie@"$SENSOR_TS_IP" "samples-get ${sha}" > "$tmp" 2>/dev/null; then
-    rm -f "$tmp"; bad=$((bad+1)); continue
+  listed=$((listed + 1))
+  [ "$listed" -le "$MAX_LISTED" ] || break
+  if ! [[ $sha =~ $SHA_RE && $size =~ $NUM_RE ]] || [ "$size" -gt "$MAX_SAMPLE" ]; then
+    bad=$((bad + 1))
+    echo "fetch_samples: ignoring malformed listing line" >&2
+    continue
   fi
-  # Trust nothing: the filename is the content hash, so prove it.
-  got=$(sha256sum "$tmp" | cut -d' ' -f1)
+  if [ -s "$sha" ]; then have=$((have + 1)); continue; fi
+
+  tmp=".$sha.part"
+  if ! sensor samples-get "$sha" | head -c "$MAX_SAMPLE" > "$tmp"; then
+    rm -f -- "$tmp"; bad=$((bad + 1)); continue
+  fi
+  # The filename is the content hash, so prove it.
+  got=$(sha256sum -- "$tmp" | cut -d' ' -f1)
   if [ "$got" != "$sha" ]; then
-    rm -f "$tmp"; bad=$((bad+1))
+    rm -f -- "$tmp"; bad=$((bad + 1))
     echo "fetch_samples: hash mismatch for ${sha:0:16}, discarded" >&2
     continue
   fi
-  mv "$tmp" "${DEST}/${sha}"
-  chmod 640 "${DEST}/${sha}"
-  new=$((new+1))
-done < <(ssh "${SSH_OPTS[@]}" cowrie@"$SENSOR_TS_IP" samples-list 2>/dev/null)
+  mv -- "$tmp" "$sha"
+  chmod 640 -- "$sha"
+  new=$((new + 1))
+done <<< "$listing"
 
-chown -R radar:radar "$DEST" 2>/dev/null || true
-echo "fetch_samples: ${new} new, ${have} already local, ${bad} failed, $(find "$DEST" -type f ! -name '.*' | wc -l) total"
-[ "$new" -eq 0 ] && [ "$have" -eq 0 ] && { echo "fetch_samples: sensor returned no samples" >&2; exit 1; }
-exit 0
+total=$(find . -maxdepth 1 -type f ! -name '.*' | wc -l)
+echo "fetch_samples: ${new} new, ${have} already local, ${bad} failed, ${total} total"
+if [ "$new" -eq 0 ] && [ "$have" -eq 0 ]; then
+  echo "fetch_samples: sensor returned no samples" >&2
+  exit 1
+fi

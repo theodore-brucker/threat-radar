@@ -1,9 +1,23 @@
 #!/usr/bin/env bash
-# Pull Cowrie logs from the sensor over the tailnet.
-# Pulls the live log AND the most recent rotated file, so daily rotation
-# never leaves a gap. The ingester de-duplicates by line hash, so
-# overlapping pulls are safe and idempotent.
-set -u
+# Pull new Cowrie log bytes from the sensor over the tailnet.
+#
+# The sensor lists its log files with their sizes, and this asks only for the
+# bytes it does not already have, appending them to the spool copy of each
+# file. The ingester tracks its own byte offset per spool file and holds back a
+# partial last line, so a chunk that ends mid-line is picked up correctly on
+# the next pass.
+#
+# The previous protocol pulled a tar of the whole live log and the whole newest
+# rotated log every two minutes, roughly 35 to 40 GB a day over the tailnet and
+# about twice that written to the SD card, and it could only ever recover one
+# rotated day. Every rotated file the sensor still keeps is now offered, so an
+# outage of up to a week loses nothing.
+#
+# Everything the sensor returns is treated as hostile, because the sensor is
+# the host this project exists to have attacked: names must match the rotation
+# pattern, sizes and chunk lengths are checked, and nothing is unpacked.
+set -euo pipefail
+
 # The service account does not own the repository, so the lock lives in the
 # unit's RuntimeDirectory. The fallback is for a run by hand outside systemd.
 exec 9>"${RUNTIME_DIRECTORY:-/tmp}/pull.lock"
@@ -14,21 +28,94 @@ flock -n 9 || exit 0          # a previous run is still going; skip this tick
 CONF="${TR_PULL_ENV:-/etc/threat-radar/pull.env}"
 # shellcheck source=/dev/null
 [ -r "$CONF" ] && . "$CONF"
-: "${SENSOR_TS_IP:?SENSOR_TS_IP not set in $CONF}"
 
-KEY=/opt/threat-radar/.ssh_pull
-KH=/opt/threat-radar/.ssh_known_hosts
-SPOOL=/opt/threat-radar/spool
+BASE="${TR_BASE:-/opt/threat-radar}"
+SPOOL="$BASE/spool"
+KEY="$BASE/.ssh_pull"
+KNOWN="$BASE/.ssh_known_hosts"
+# Rotated files older than this are not requested. It matches the spool
+# retention in the prune unit, so a file prune has deleted is never fetched
+# again while the sensor still lists it.
+RETAIN_DAYS="${TR_SPOOL_RETAIN_DAYS:-8}"
+MAX_CHUNK=$((64 * 1024 * 1024))
+MAX_FILES=64
+NAME_RE='^cowrie\.json(\.[0-9]{4}-[0-9]{2}-[0-9]{2})?$'
+NUM_RE='^[0-9]{1,12}$'
 
-ssh -T -i "$KEY" -p 2200 \
-    -o UserKnownHostsFile="$KH" \
-    -o StrictHostKeyChecking=accept-new \
-    -o BatchMode=yes -o ConnectTimeout=10 \
-    cowrie@"$SENSOR_TS_IP" > "${SPOOL}/pull.tmp" || exit 1
+sensor() {
+  if [ -n "${TR_PULL_TRANSPORT:-}" ]; then
+    # Test hook: run the request through a local command instead of ssh.
+    SSH_ORIGINAL_COMMAND="$*" "$TR_PULL_TRANSPORT"
+    return
+  fi
+  : "${SENSOR_TS_IP:?SENSOR_TS_IP not set in $CONF}"
+  ssh -T -i "$KEY" -p 2200 \
+      -o IdentitiesOnly=yes -o BatchMode=yes \
+      -o UserKnownHostsFile="$KNOWN" -o StrictHostKeyChecking=yes \
+      -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 \
+      cowrie@"$SENSOR_TS_IP" "$*"
+}
 
-# The sensor-side wrapper emits a tar of the current + newest rotated log.
-if tar -tf "${SPOOL}/pull.tmp" >/dev/null 2>&1; then
-    tar -xf "${SPOOL}/pull.tmp" -C "$SPOOL" && rm -f "${SPOOL}/pull.tmp"
-else
-    mv "${SPOOL}/pull.tmp" "${SPOOL}/cowrie.json"
-fi
+cd "$SPOOL"
+rm -f -- .chunk.* pull.tmp
+
+manifest=$(sensor manifest) || { echo "pull: manifest request failed" >&2; exit 1; }
+oldest=$(date -u -d "-$((RETAIN_DAYS - 1)) days" +%F)
+fetched=0 files=0
+
+while read -r name size; do
+  [ -n "${name:-}" ] || continue
+  files=$((files + 1))
+  if [ "$files" -gt "$MAX_FILES" ]; then
+    echo "pull: manifest lists more than $MAX_FILES files, ignoring the rest" >&2
+    break
+  fi
+  if ! [[ $name =~ $NAME_RE && $size =~ $NUM_RE ]]; then
+    echo "pull: ignoring malformed manifest line" >&2
+    continue
+  fi
+  if [ "$name" != cowrie.json ] && [[ ${name#cowrie.json.} < $oldest ]]; then
+    continue
+  fi
+
+  have=0
+  [ -f "$name" ] && have=$(stat -c %s -- "$name")
+  if [ "$have" -gt "$size" ]; then
+    # The sensor's copy is shorter than ours, which is what the live log looks
+    # like just after rotation. Its old contents now live under a dated name
+    # that this loop fetches separately, so start this one again.
+    rm -f -- "$name"
+    have=0
+  fi
+
+  while [ "$have" -lt "$size" ]; do
+    want=$((size - have))
+    [ "$want" -le "$MAX_CHUNK" ] || want=$MAX_CHUNK
+    tmp=".chunk.$$"
+    # One byte more than asked for is read on purpose. An answer longer than
+    # the request is a protocol violation, and reading exactly the requested
+    # length would make whether it gets noticed depend on process scheduling.
+    if ! sensor chunk "$name" "$have" "$want" | head -c "$((want + 1))" > "$tmp"; then
+      rm -f -- "$tmp"
+      echo "pull: chunk request failed for $name at $have" >&2
+      break
+    fi
+    got=$(stat -c %s -- "$tmp")
+    if [ "$got" -gt "$want" ]; then
+      rm -f -- "$tmp"
+      echo "pull: sensor sent more than requested for $name, discarded" >&2
+      break
+    fi
+    if [ "$got" -eq 0 ]; then
+      rm -f -- "$tmp"
+      echo "pull: empty chunk for $name at $have" >&2
+      break
+    fi
+    cat -- "$tmp" >> "$name"
+    rm -f -- "$tmp"
+    have=$((have + got))
+    fetched=$((fetched + got))
+  done
+done <<< "$manifest"
+
+echo "pull: $fetched byte(s) from $files file(s) listed"

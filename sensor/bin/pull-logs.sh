@@ -1,58 +1,100 @@
 #!/bin/bash
-# Sensor-side forced command. Read-only. The client cannot pass a path; the
-# only accepted argument is a 64-char hex sha256, matched against a fixed
-# directory. Default (no argument) is unchanged: a tar of the live log plus
-# the newest rotated log.
-set -u
+# Sensor-side forced command for the collector's pull key. Read-only.
+#
+# Every request is one line in SSH_ORIGINAL_COMMAND, the only input the client
+# controls. Nothing here takes a path: log names must match the rotation
+# pattern, sample names must be 64 hex characters, and every number must be
+# plain decimal.
+#
+#   manifest                    one "name size" line per log file present
+#   chunk NAME OFFSET LENGTH    LENGTH bytes of NAME starting at OFFSET
+#   samples-list                one "size sha256" line per capture
+#   samples-get SHA256          the capture with that name
+#   logs                        the previous protocol, a tar of the live log
+#                               and the newest rotated one; kept only until
+#                               the collector runs the manifest protocol, and
+#                               to be removed after that
+#
+# The manifest and chunk requests replace the tar. The tar re-sent the whole
+# live log and the whole newest rotated log on every pull, which at a
+# two-minute interval came to roughly 35 to 40 GB a day for a few megabytes of
+# new events, and it only ever offered the newest rotated file, so a collector
+# that missed a full day lost it. The collector now asks for what it lacks.
+set -euo pipefail
+# Globbing stays off: the request is split into words below and none of them
+# may expand against the filesystem.
+set -f
 
-LOGDIR=/opt/cowrie/var/log/cowrie
-DLDIR=/opt/cowrie/var/lib/cowrie/downloads
-MAXBYTES=$((32*1024*1024))
+LOGDIR="${PULL_LOGDIR:-/opt/cowrie/var/log/cowrie}"
+DLDIR="${PULL_DLDIR:-/opt/cowrie/var/lib/cowrie/downloads}"
+MAX_CHUNK=$((64 * 1024 * 1024))
+MAX_SAMPLE=$((32 * 1024 * 1024))
+NAME_RE='^cowrie\.json(\.[0-9]{4}-[0-9]{2}-[0-9]{2})?$'
+NUM_RE='^[0-9]{1,12}$'
+SHA_RE='^[0-9a-f]{64}$'
 
-REQ="${SSH_ORIGINAL_COMMAND:-logs}"
-set -- $REQ
-MODE="${1:-logs}"
-ARG="${2:-}"
+refuse() { echo "refused: $1" >&2; exit 2; }
 
-case "$MODE" in
-  logs|"")
-    # Cowrie writes cowrie.json continuously. Tarring it in place returns
-    # exit 1 ("file changed as we read it") and the client discards the
-    # whole cycle, which was losing roughly one pull in three. Snapshot
-    # first, then tar the copy.
-    cd "$LOGDIR" || exit 1
-    TMP=$(mktemp -d /tmp/pull-logs.XXXXXX) || exit 1
-    trap 'rm -rf "$TMP"' EXIT
-    cp cowrie.json "$TMP/cowrie.json" || exit 1
-    NEWEST_ROTATED=$(ls -1t cowrie.json.20* 2>/dev/null | head -1)
-    [ -n "${NEWEST_ROTATED:-}" ] && cp "$NEWEST_ROTATED" "$TMP/$NEWEST_ROTATED"
-    tar -cf - -C "$TMP" .
+read -r -a argv <<< "${SSH_ORIGINAL_COMMAND:-}"
+cmd="${argv[0]:-}"
+
+case "$cmd" in
+  manifest)
+    [ "${#argv[@]}" -eq 1 ] || refuse "manifest takes no arguments"
+    find "$LOGDIR" -maxdepth 1 -type f -regextype posix-extended \
+      -regex '.*/cowrie\.json(\.[0-9]{4}-[0-9]{2}-[0-9]{2})?' -printf '%f %s\n' | sort
     ;;
+
+  chunk)
+    [ "${#argv[@]}" -eq 4 ] || refuse "chunk takes a name, an offset and a length"
+    name="${argv[1]}" offset="${argv[2]}" length="${argv[3]}"
+    [[ $name =~ $NAME_RE ]] || refuse "not a log name"
+    [[ $offset =~ $NUM_RE && $length =~ $NUM_RE ]] || refuse "not a number"
+    [ "$length" -le "$MAX_CHUNK" ] || length=$MAX_CHUNK
+    file="$LOGDIR/$name"
+    [ -f "$file" ] || refuse "no such log"
+    size=$(stat -c %s -- "$file")
+    [ "$offset" -le "$size" ] || refuse "offset past the end"
+    # dd rather than tail piped to head: a pipe closed early by head would
+    # kill tail with SIGPIPE and turn a complete answer into a failed exit.
+    # The live log keeps growing while this reads, which is fine, because
+    # count_bytes stops at the requested length whatever arrives meanwhile.
+    dd if="$file" bs=65536 iflag=skip_bytes,count_bytes \
+       skip="$offset" count="$length" status=none
+    ;;
+
   samples-list)
-    cd "$DLDIR" || exit 1
-    for f in *; do
-      [ -f "$f" ] || continue
-      case "$f" in
-        *[!0-9a-f]*|"") continue ;;
-      esac
-      [ ${#f} -eq 64 ] || continue
-      sz=$(stat -c %s "$f")
-      [ "$sz" -gt 0 ] && [ "$sz" -le "$MAXBYTES" ] && echo "$sz $f"
-    done
-    exit 0
+    [ "${#argv[@]}" -eq 1 ] || refuse "samples-list takes no arguments"
+    find "$DLDIR" -maxdepth 1 -type f -regextype posix-extended \
+      -regex '.*/[0-9a-f]{64}' -size +0c -size -$((MAX_SAMPLE + 1))c -printf '%s %f\n'
     ;;
+
   samples-get)
-    case "$ARG" in
-      *[!0-9a-f]*|"") exit 2 ;;
-    esac
-    [ ${#ARG} -eq 64 ] || exit 2
-    F="$DLDIR/$ARG"
-    [ -f "$F" ] || exit 3
-    sz=$(stat -c %s "$F")
-    [ "$sz" -gt 0 ] && [ "$sz" -le "$MAXBYTES" ] || exit 4
-    exec cat "$F"
+    [ "${#argv[@]}" -eq 2 ] || refuse "samples-get takes one sha256"
+    sha="${argv[1]}"
+    [[ $sha =~ $SHA_RE ]] || refuse "not a sha256"
+    file="$DLDIR/$sha"
+    [ -f "$file" ] || exit 3
+    size=$(stat -c %s -- "$file")
+    [ "$size" -gt 0 ] && [ "$size" -le "$MAX_SAMPLE" ] || exit 4
+    exec cat -- "$file"
     ;;
+
+  logs|"")
+    # Previous protocol, see the header. Cowrie writes cowrie.json
+    # continuously, so it is copied before being tarred; tarring it in place
+    # returns "file changed as we read it" and the client dropped the cycle.
+    [ "${#argv[@]}" -le 1 ] || refuse "logs takes no arguments"
+    tmp=$(mktemp -d /tmp/pull-logs.XXXXXX)
+    trap 'rm -rf "$tmp"' EXIT
+    cp -- "$LOGDIR/cowrie.json" "$tmp/cowrie.json"
+    newest=$(find "$LOGDIR" -maxdepth 1 -type f -name 'cowrie.json.20*' -printf '%T@ %f\n' \
+             | sort -rn | head -1 | cut -d' ' -f2)
+    [ -n "$newest" ] && cp -- "$LOGDIR/$newest" "$tmp/$newest"
+    tar -cf - -C "$tmp" .
+    ;;
+
   *)
-    exit 64
+    refuse "unknown request"
     ;;
 esac

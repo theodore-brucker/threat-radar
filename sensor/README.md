@@ -19,7 +19,9 @@ blocks the persona paths, so an overlaid checkout cannot commit them back here.
 
 ## Layout
 
-- `bin/` holds `pull-logs.sh` (forced-command wrapper), `prune-logs.sh`,
+- `bin/` holds `pull-logs.sh` (forced-command wrapper: the collector asks
+  for a manifest of log files and sizes, then for only the byte ranges it
+  lacks, and fetches captures by sha256), `prune-logs.sh`,
   `validate_userdb.py` and `cowrie_userdb.py`. The last of those is the one
   place that describes what Cowrie does with `userdb.txt`: the start-up gate
   and the generator on the collector both import it, because they used to

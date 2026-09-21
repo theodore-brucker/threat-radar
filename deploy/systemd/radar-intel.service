@@ -9,6 +9,9 @@ User=radar
 Group=radar
 WorkingDirectory=/opt/threat-radar
 EnvironmentFile=-/etc/threat-radar/intel.env
+# The sample fetch in ExecStartPre needs the sensor address, which lives in
+# the pull unit's file so that there is exactly one copy of it.
+EnvironmentFile=/etc/threat-radar/pull.env
 Environment=TR_APP=/opt/threat-radar
 Environment=TR_DB=/opt/threat-radar/data/radar.db
 Environment=TR_CRED_RULES=/opt/threat-radar/config/credential_tags.json

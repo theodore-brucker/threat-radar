@@ -15,7 +15,10 @@ Environment=TR_BASE=/opt/threat-radar
 Environment=TR_RETAIN_DAYS=30
 Environment=TR_ROLLUP_RETAIN_DAYS=36500
 Environment=TR_MAX_DB_MB=4096
-Environment=TR_SPOOL_RETAIN_DAYS=3
+# Rotated logs are kept on the collector for as long as the sensor lists
+# them, so an outage of up to a week can be recovered and a pruned file is
+# never requested again. Must match the pull unit.
+Environment=TR_SPOOL_RETAIN_DAYS=8
 ExecStart=/opt/threat-radar/venv/bin/python /opt/threat-radar/prune.py
 TimeoutStartSec=1800
 

@@ -7,6 +7,11 @@ User=radar
 Group=radar
 WorkingDirectory=/opt/threat-radar
 EnvironmentFile=/etc/threat-radar/pull.env
+Environment=TR_BASE=/opt/threat-radar
+# Must match the prune unit. The pull only requests rotated files newer than
+# this, so a file the prune has deleted is never fetched again while the
+# sensor still lists it.
+Environment=TR_SPOOL_RETAIN_DAYS=8
 ExecStart=/opt/threat-radar/pull.sh
 # RuntimeMaxSec has no effect on a oneshot unit, which is what the installed
 # copy used, so nothing has been bounding a stalled pull. TimeoutStartSec is
@@ -20,10 +25,10 @@ RuntimeDirectoryMode=0750
 RuntimeDirectoryPreserve=yes
 
 # Hardening. Everything this receives comes from a host that is meant to be
-# attacked, so it writes only to the spool it unpacks into. The known-hosts
-# file is writable because the transport still accepts a first-seen host key;
-# that becomes StrictHostKeyChecking=yes when the pull protocol is reworked.
-ReadWritePaths=/opt/threat-radar/spool /opt/threat-radar/.ssh_known_hosts
+# attacked, so it writes only to the spool. The sensor's host key is pinned in
+# the known-hosts file with StrictHostKeyChecking=yes, so that file is only
+# ever read.
+ReadWritePaths=/opt/threat-radar/spool
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
