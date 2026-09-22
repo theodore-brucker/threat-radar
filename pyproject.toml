@@ -1,0 +1,81 @@
+# Tool configuration only. The collector runs from a checkout rather than an
+# installed package, so there is no [project] table.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"
+filterwarnings = [
+    # Starlette's test client warns about its own httpx dependency; nothing here
+    # can act on that until the test client changes.
+    "ignore::DeprecationWarning:starlette.*",
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+]
+
+[tool.coverage.run]
+# Measured by path, because the tests load ingest.py, enrich.py and prune.py
+# by file under other module names and would otherwise not be counted.
+source = ["."]
+branch = true
+omit = ["tests/*", "tools/*", ".venv/*", "venv/*", "sensor/persona*/*"]
+
+[tool.coverage.report]
+skip_empty = true
+
+[tool.ruff]
+target-version = "py312"
+extend-exclude = ["venv", ".venv"]
+
+[tool.ruff.lint]
+select = ["F", "E9"]
+
+[tool.bandit]
+exclude_dirs = ["tests", "venv", ".venv", "tools"]
+# B608 flags every SQL string built with an f-string, which cannot tell a
+# generated fragment from injection. tests/test_sql_construction.py enforces
+# the actual rule instead: every interpolation is reviewed or it fails CI.
+skips = ["B608"]
+
+[tool.vulture]
+paths = ["app", "bin", "ingest.py", "enrich.py", "prune.py"]
+min_confidence = 60
+# Routes and middleware are registered by decorator, and these two are
+# attributes sqlite3 and a dataclass read, not names this code calls.
+ignore_decorators = ["@router.get", "@router.post", "@app.middleware"]
+ignore_names = ["row_factory", "hour"]
+
+[tool.threat-radar.coverage-floors]
+# Minimum line and branch coverage per module, enforced by
+# tools/check_coverage.py. Each floor is where the module stood when the table
+# was written, rounded down to five, so a real drop fails and refactoring noise
+# does not. Raise a floor when a module's tests improve; lowering one needs a
+# reason in the commit message. The low floors are honest, not goals.
+"TOTAL" = 75
+"app/analytics/__init__.py" = 100
+"app/analytics/asn.py" = 60
+"app/analytics/cards.py" = 85
+"app/analytics/contributions.py" = 90
+"app/analytics/credentials.py" = 75
+"app/analytics/db.py" = 80
+"app/analytics/entities.py" = 90
+"app/analytics/escalation.py" = 80
+"app/analytics/exec_view.py" = 80
+"app/analytics/families.py" = 20
+"app/analytics/fingerprints.py" = 80
+"app/analytics/funnel.py" = 85
+"app/analytics/lookup.py" = 80
+"app/analytics/outages.py" = 85
+"app/analytics/overview.py" = 90
+"app/analytics/payloads.py" = 80
+"app/analytics/persona.py" = 40
+"app/analytics/sessions.py" = 75
+"app/analytics/spikes.py" = 35
+"app/analytics/tunnels.py" = 80
+"app/main.py" = 100
+"app/routers/site.py" = 95
+"app/shell.py" = 100
+"bin/build_userdb.py" = 70
+"bin/intel_worker.py" = 65
+"enrich.py" = 65
+"ingest.py" = 65
+"prune.py" = 65
+"sensor/bin/cowrie_userdb.py" = 95

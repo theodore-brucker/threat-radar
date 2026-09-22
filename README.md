@@ -81,29 +81,51 @@ See `SETUP.md` for build notes.
 
 ## Tests
 
-Dependencies are locked with hashes. `requirements.txt` is the runtime lock
-the collector installs with `--require-hashes`, generated from
-`requirements.in`; `requirements-dev.txt` adds the test tools, constrained to
-the same versions. Every test builds a throwaway database from `schema.sql`
-and the real migrations, and none touches the network: the worker's HTTP
-helper is replaced with a scripted fake, and the pull transport runs the real
-sensor wrapper locally. Run the suite from the repo root in a separate
-environment rather than the collector's own:
+The suite exists to defend the design rules in `SECURITY.md` and the failures
+this deployment has actually had, rather than to push a coverage number. Every
+test builds a throwaway database from `schema.sql` and the real migrations, and
+none touches the network. Run it in a separate environment from the
+collector's:
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install --require-hashes -r requirements.txt -r requirements-dev.txt
-.venv/bin/python -m pytest
+.venv/bin/python -m pytest --cov --cov-report=json:coverage.json
+.venv/bin/python tools/check_coverage.py coverage.json
 ```
 
-Coverage is organised by the failure each area defends against: VirusTotal
-and MalwareBazaar submission (`test_vt_submit`, `test_bazaar`), snapshots and
-refresh cadence (`test_snapshots`), durable capture context
-(`test_provenance`), contribution counts (`test_contributions`), lifetime
-tables surviving the raw window (`test_retention`), what Cowrie does with the
-userdb (`test_userdb`, which cross-checks against the real parser where Cowrie
-is installed), the pull protocol against a hostile sensor
-(`test_pull_protocol`), and the API surface (`test_api`).
+What it covers, by the failure each part defends against:
+
+- **Every API route**, discovered from the application so new routes are
+  covered automatically, against a fixture built through the real pipeline
+  with hostile strings in every attacker-controlled field: the response
+  envelope, no 5xx or leaked error under hostile path and query input, no
+  sample bytes and no live URLs anywhere, and the security headers on every
+  response (`test_api_routes`).
+- **SQL construction**: every value interpolated into a SQL string is one that
+  was traced to its source, or the test fails (`test_sql_construction`). This
+  replaces bandit's B608, which cannot tell the two apart.
+- **Properties over generated input**, using Hypothesis, for everything that
+  consumes attacker strings: anything the userdb generator accepts loads
+  cleanly in Cowrie, displayed sample text is never runnable, and ingest's
+  offset always lands on a line boundary (`test_properties`).
+- **The userdb**, against Cowrie's own parser where it is installed
+  (`test_userdb`, `test_build_userdb`); the pull protocol against a hostile
+  sensor (`test_pull_protocol`, and `tests/shell` for the wrapper itself);
+  lifetime tables surviving the raw window (`test_retention`); ingest offsets
+  (`test_ingest`); stage health (`test_health`); migrations applying cleanly
+  twice (`test_migrations`); read-only connections (`test_readonly`); HTML
+  sinks and the served script policy (`test_frontend`).
+
+Coverage has a floor per module in `pyproject.toml` rather than one global
+number, so a well-covered module cannot hide a neglected one. The low floors
+are where those modules stand, not targets.
+
+CI runs all of this on every push and pull request, plus ruff, bandit,
+vulture, shellcheck, the shell tests, pip-audit against every lock, and
+gitleaks over the full history. A separate job installs the Cowrie version the
+sensor runs and fails if the userdb cross-check skips. `.pre-commit-config.yaml`
+runs the fast checks before each commit if you want them there too.
 
 ## Licence
 

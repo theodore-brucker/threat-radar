@@ -41,3 +41,9 @@ UPGRADE*.md
 # canary material, never commit anywhere
 sensor/etc/canary.env
 **/.aws/credentials
+
+# test and coverage output
+.coverage
+coverage.json
+parity.log
+.hypothesis/

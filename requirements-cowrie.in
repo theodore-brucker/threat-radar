@@ -1,0 +1,6 @@
+# Only for the CI job that checks the userdb rules against Cowrie's own parser.
+# Match the version the sensor runs.
+#
+#   uv pip compile requirements-cowrie.in --universal --generate-hashes \
+#     --python-version 3.12 -o requirements-cowrie.txt
+cowrie==3.0.14
