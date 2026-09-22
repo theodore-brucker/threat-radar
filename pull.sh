@@ -18,9 +18,14 @@
 # pattern, sizes and chunk lengths are checked, and nothing is unpacked.
 set -euo pipefail
 
+BASE="${TR_BASE:-/opt/threat-radar}"
+SPOOL="$BASE/spool"
+
 # The service account does not own the repository, so the lock lives in the
-# unit's RuntimeDirectory. The fallback is for a run by hand outside systemd.
-exec 9>"${RUNTIME_DIRECTORY:-/tmp}/pull.lock"
+# unit's RuntimeDirectory. The fallback for a run by hand is the spool, which
+# the service account owns, rather than /tmp, where another local account
+# could create the file first.
+exec 9>"${RUNTIME_DIRECTORY:-$SPOOL}/pull.lock"
 flock -n 9 || exit 0          # a previous run is still going; skip this tick
 
 # Sensor address lives outside the repo so it is never committed. The unit
@@ -29,8 +34,6 @@ CONF="${TR_PULL_ENV:-/etc/threat-radar/pull.env}"
 # shellcheck source=/dev/null
 [ -r "$CONF" ] && . "$CONF"
 
-BASE="${TR_BASE:-/opt/threat-radar}"
-SPOOL="$BASE/spool"
 KEY="$BASE/.ssh_pull"
 KNOWN="$BASE/.ssh_known_hosts"
 # Rotated files older than this are not requested. It matches the spool

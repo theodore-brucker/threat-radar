@@ -141,38 +141,3 @@ def silent_sessions(con, days=30, limit=100, offset=0):
     }
 
 
-def command_gap(con, days=30):
-    """Where the command volume actually comes from, once sessions are ranked."""
-    days = db.clamp_days(days, default=30)
-    ts = db.TsExpr(con)
-    cut_day = ts.cutoff(days)
-    cut_day = (cut_day if isinstance(cut_day, str) else "")[:10] or "0000-00-00"
-    return {
-        "top_sessions": db.qall(
-            con,
-            """
-            SELECT session, src_ip, username, commands, duration, first_seen
-            FROM session_facts
-            WHERE day >= ? AND commands > 0
-            ORDER BY commands DESC LIMIT 25
-            """,
-            (cut_day,),
-        ),
-        "distribution": db.qall(
-            con,
-            """
-            SELECT CASE
-                     WHEN commands = 0 THEN '0'
-                     WHEN commands = 1 THEN '1'
-                     WHEN commands <= 5 THEN '2-5'
-                     WHEN commands <= 20 THEN '6-20'
-                     ELSE '20+'
-                   END AS bucket,
-                   COUNT(*) AS sessions
-            FROM session_facts
-            WHERE day >= ? AND authed > 0
-            GROUP BY 1
-            """,
-            (cut_day,),
-        ),
-    }

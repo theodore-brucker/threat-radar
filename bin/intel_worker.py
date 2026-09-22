@@ -18,11 +18,11 @@ import argparse
 import base64
 import datetime as dt
 import fcntl
-import hashlib
 import ipaddress
 import json
 import os
 import re
+import secrets
 import sys
 import time
 import urllib.error
@@ -57,8 +57,11 @@ MIGRATIONS = [
     os.path.join(APP_DIR, "migrations", "014_drop_redundant_index.sql"),
 ]
 # The service account does not own the repository, so the lock lives in the
-# unit's RuntimeDirectory. The fallback is for a run by hand outside systemd.
-LOCK_DIR = os.environ.get("RUNTIME_DIRECTORY") or os.environ.get("TR_LOCK_DIR") or "/tmp"
+# unit's RuntimeDirectory. The fallback for a run by hand is the database's
+# own directory, which the service account owns, rather than /tmp, where
+# another local account could create the file first.
+LOCK_DIR = (os.environ.get("RUNTIME_DIRECTORY") or os.environ.get("TR_LOCK_DIR")
+            or os.path.dirname(db.DB_PATH))
 LOCK_PATH = os.path.join(LOCK_DIR.split(":")[0], "insights.lock")
 
 DOWNLOAD_EVENT = "cowrie.session.file_download"
@@ -781,11 +784,16 @@ def _decode(status, raw):
 
 
 def _http(url, headers=None, data=None):
+    # Every caller passes a fixed https endpoint. Refusing anything else keeps
+    # a future caller from handing urlopen a file: or plain http URL.
+    if not url.startswith("https://"):
+        raise ValueError(f"refusing a non-https URL: {url[:40]}")
     hdrs = {"User-Agent": USER_AGENT, "Accept": "application/json"}
     hdrs.update(headers or {})
     req = urllib.request.Request(url, data=data, headers=hdrs)
     try:
-        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+        # The scheme is checked at the top of this function.
+        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:  # nosec B310
             return _decode(resp.status, resp.read())
     except urllib.error.HTTPError as e:
         return _decode(e.code, e.read())
@@ -1069,7 +1077,7 @@ DRY_RUN_SUBMIT = False
 def _multipart(fields, filename, payload):
     """Build a multipart/form-data body with stdlib only, so the worker keeps
     its zero-dependency footprint."""
-    boundary = "----radar" + hashlib.sha1(os.urandom(16)).hexdigest()[:24]
+    boundary = "----radar" + secrets.token_hex(12)
     out = []
     for k, v in (fields or {}).items():
         out.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n".encode())

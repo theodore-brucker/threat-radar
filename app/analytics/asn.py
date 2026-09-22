@@ -216,33 +216,3 @@ def _reason(r, share, concentration, ips, per_ip):
     return "; ".join(bits)
 
 
-def asn_detail(con, asn, days=30):
-    days = _window_days(days)
-    ts = db.TsExpr(con)
-    cut_day = ts.cutoff(days)
-    cut_day = (cut_day if isinstance(cut_day, str) else "")[:10] or "0000-00-00"
-    ips = db.qall(
-        con,
-        """
-        SELECT src_ip, SUM(events) AS events, SUM(sessions) AS sessions,
-               SUM(successes) AS successes, SUM(commands) AS commands,
-               SUM(downloads) AS downloads, MIN(day) AS first_day, MAX(day) AS last_day
-        FROM asn_ip_daily
-        WHERE day >= ? AND COALESCE(NULLIF(asn,''),'unknown') = ?
-        GROUP BY src_ip
-        ORDER BY events DESC
-        LIMIT 100
-        """,
-        (cut_day, asn),
-    )
-    daily = db.qall(
-        con,
-        """
-        SELECT day, SUM(events) AS events, COUNT(DISTINCT src_ip) AS src_ips
-        FROM asn_ip_daily
-        WHERE day >= ? AND COALESCE(NULLIF(asn,''),'unknown') = ?
-        GROUP BY day ORDER BY day
-        """,
-        (cut_day, asn),
-    )
-    return {"asn": asn, "window_days": days, "addresses": ips, "daily": daily}
