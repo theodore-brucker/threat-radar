@@ -144,6 +144,9 @@ class GeneratorRuleTests(unittest.TestCase):
             ("has space", "hunter2"),
             ("has/slash", "hunter2"),
             ("userdb.txt", "hunter2"),
+            # Found by the property test: Cowrie skips any line starting with
+            # "#", so this entry would silently never load.
+            ("#admin", "hunter2"),
         ]
         for login, passwd in cases:
             self.assertIsNotNone(

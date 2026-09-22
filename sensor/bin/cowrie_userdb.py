@@ -173,6 +173,8 @@ def literal_pair_problem(login, passwd):
     """
     if not login:
         return "empty login field"
+    if login.startswith("#"):
+        return "login starts with '#', which makes the whole line a comment"
     if not passwd:
         return "empty password field, the fault that broke the sensor 2026-07-31"
     if passwd.strip() != passwd:

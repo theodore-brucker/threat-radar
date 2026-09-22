@@ -342,9 +342,15 @@ def batch(con, items):
     just will not preview.
     """
     grouped = {}
-    for it in (items or [])[:MAX_ITEMS]:
-        t = (it or {}).get("type")
-        v = (it or {}).get("value")
+    # The body is whatever the client sent. A string or a list of anything but
+    # objects used to reach .get() and fail with a 500.
+    if not isinstance(items, list):
+        return {"cards": {}, "count": 0}
+    for it in items[:MAX_ITEMS]:
+        if not isinstance(it, dict):
+            continue
+        t = it.get("type")
+        v = it.get("value")
         if t in BUILDERS and isinstance(v, str) and v:
             grouped.setdefault(t, set()).add(v)
 

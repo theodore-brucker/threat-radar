@@ -109,11 +109,20 @@ def tag_pair(username: str, password: str, rules=None) -> list:
     return sorted(set(tags))
 
 
+# Tags assigned in code rather than read from the rules file, with the labels
+# the credentials page shows. Kept in one place so the set of tags a pair can
+# carry is the rules file plus exactly these.
+STRUCTURAL_TAGS = {
+    "user-as-pass": "Password equals username",
+    "pass-contains-user": "Password derived from username",
+    "unclustered": "No rule matched",
+}
+
+
 def tag_labels() -> dict:
     _, labels = load_rules()
-    labels.setdefault("user-as-pass", "Password equals username")
-    labels.setdefault("pass-contains-user", "Password derived from username")
-    labels.setdefault("unclustered", "No rule matched")
+    for tag, label in STRUCTURAL_TAGS.items():
+        labels.setdefault(tag, label)
     return labels
 
 

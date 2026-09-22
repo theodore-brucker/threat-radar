@@ -188,7 +188,9 @@ def spikes(days: int = Query(90, ge=7, le=3650)):
 def sources(days: int = Query(30, ge=1, le=3650),
             min_stage: int = Query(0, ge=0, le=4),
             limit: int = Query(100, ge=1, le=1000),
-            offset: int = Query(0, ge=0)):
+            # Bounded like every other integer here: an unbounded value reaches
+            # SQLite, which cannot store it, and the request failed with a 500.
+            offset: int = Query(0, ge=0, le=10_000_000)):
     con = _con()
     try:
         sc = db.source_columns(con)
