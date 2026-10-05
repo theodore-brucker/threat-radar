@@ -6,7 +6,8 @@
    mid-octet across eight lines and made a command impossible to read. */
 
 import { api, h, num, panel, shortDate, tag, mid, routeLink, ipLink,
-         entity, cmdBlock, breadcrumbs, emptyState, currentPath } from "../core.js";
+         entity, cmdBlock, breadcrumbs, emptyState, currentPath,
+         exportControl } from "../core.js";
 
 export const TITLE = "Session";
 
@@ -58,7 +59,10 @@ export async function render() {
     h("div", { class: "pagehead" }, [
       breadcrumbs(),
       h("p", {}, [routeLink("/sessions", "back to sessions", "")]),
-      h("div", { class: "enthead" }, [h("h1", { text: `session ${id}` })]),
+      h("div", { class: "enthead" }, [
+        h("h1", { text: `session ${id}` }),
+        exportControl("session", id),
+      ]),
     ]),
 
     panel("What we know", null, [

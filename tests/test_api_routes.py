@@ -63,6 +63,8 @@ class RouteCase(DBTestCase):
         }
         if route.path == "/api/v1/entity/{etype}/{value}":
             return None
+        if route.path == "/api/v1/export/{etype}/{value}":
+            return "/api/v1/export/ip/192.0.2.10"
         path = route.path
         for p in route.dependant.path_params:
             path = path.replace("{%s}" % p.name, values[p.name])
@@ -75,6 +77,15 @@ class RouteCase(DBTestCase):
             "/api/v1/entity/credential/" + b64u("root\x00" + fixtures.HOSTILE[0]),
             "/api/v1/entity/hassh/" + "%032x" % 0,
             "/api/v1/entity/url/" + b64u("http://203.0.113.50/" + fixtures.HOSTILE[0][:60]),
+        ]
+
+    def export_paths(self):
+        """Every entity type the site links to, as an export."""
+        ents = [p.replace("/api/v1/entity/", "/api/v1/export/") for p in self.entity_paths()]
+        return ents + [
+            "/api/v1/export/session/" + "%08x%04x" % (0, 0),
+            "/api/v1/export/sample/" + self.shas["binary"],
+            "/api/v1/export/sample/" + self.shas["text"],
         ]
 
     def get(self, path, **params):
@@ -90,7 +101,7 @@ class ContractTests(RouteCase):
 
     def test_every_get_route_answers_the_envelope(self):
         paths = [self.valid_path(r) for r in self.routes if "GET" in r.methods]
-        for path in [p for p in paths if p] + self.entity_paths():
+        for path in [p for p in paths if p] + self.entity_paths() + self.export_paths():
             with self.subTest(path=path):
                 r = self.get(path)
                 self.assertEqual(r.status_code, 200, r.text[:200])
@@ -202,6 +213,11 @@ class SampleBytesTests(RouteCase):
                 paths = [route.path.replace("{shasum}", s) for s in self.shas.values()]
             for path in paths:
                 yield path, self.get(path)
+        # An export gathers sessions and files from several places into one
+        # document, so it is checked in both of the forms it is served in.
+        for path in self.export_paths():
+            yield path, self.get(path)
+            yield path + "?format=md", self.get(path, format="md")
 
     def test_no_route_returns_binary_sample_bytes(self):
         marker = fixtures.BINARY_MARKER[8:24]

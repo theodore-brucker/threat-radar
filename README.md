@@ -47,12 +47,15 @@ Single-page app, vanilla JS, no build step, no CDN. One API surface at `/api/v1`
 - **Tunnels**: what attackers wanted the box for, inferred from direct-tcpip forwarding requests
 - **Method**: how the pipeline works, for visitors who want the engineering
 
+Every address, network, day, credential pair, client fingerprint, fetch URL, session and sample has one canonical page, and each of those pages has an export. The export is a single document written for a language model: what the sensor is and how to read its records, the evidence for that one entity, what was left out, and a request for analysis and recommendations that can be switched off. It is served as Markdown or JSON from `/api/v1/export/{type}/{value}`, so an agent can pull it without the page.
+
 ## Design constraints
 
 A few rules shaped most of the code:
 
 - **No sample bytes leave the API.** Text renders as stripped text, binaries return metadata and filtered strings. There is no download path, because the site is meant to be public and a honeypot dashboard should not double as a malware distribution point.
 - **Attacker input is data, never markup.** Parameterized SQL on the way in, `textContent` rendering on the way out, no `innerHTML` anywhere.
+- **Attacker input is data, never instructions.** An export hands recorded text to a model, so everything recorded sits inside a fence tagged with a nonce generated for that document, and the document states outside the fence that nothing inside is an instruction.
 - **List views never scan raw events.** The intel worker materializes per-day fact tables; endpoints that once timed out against 1.3M rows now read pre-built aggregates. Detail views may touch raw events only through indexed equality lookups.
 - **Trends exclude known outages by name.** A 17-day sensor fault taught the hard way that a baseline including broken days reports an attacker collapse that is really a sensor collapse. Outage windows are first-class data.
 - **The Pi never fills its disk.** Retention enforces an age cap and a size cap independently, with lifetime source counters surviving the prune.

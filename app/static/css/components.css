@@ -492,6 +492,44 @@ button.copy {
 }
 button.copy:hover { border-color: var(--accent); }
 
+/* ---------- export ----------
+   A disclosure, so it opens and closes without script and works from the
+   keyboard as the browser already provides. */
+
+details.export { position: relative; }
+details.export > summary {
+  list-style: none; cursor: pointer; user-select: none;
+  font-family: var(--font-mono); font-size: var(--fs-11); padding: 3px 9px;
+  /* --surface, not white: the dark theme's accent is a light blue, and white
+     on it is under 3:1. */
+  background: var(--accent); color: var(--surface);
+  border: 1px solid var(--accent); border-radius: var(--radius);
+}
+details.export > summary::-webkit-details-marker { display: none; }
+details.export > summary:hover, details.export[open] > summary { background: var(--accent-deep); }
+.export-menu {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 40;
+  width: min(380px, calc(100vw - 2 * var(--s3)));
+  padding: var(--s3); display: grid; gap: var(--s3);
+  background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: var(--radius); box-shadow: var(--shadow-pop);
+}
+.export-menu button.primary { color: var(--surface); }
+.export-menu p { margin: 0; font-size: var(--fs-13); color: var(--ink-soft); }
+.export-row { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.export-size { font-family: var(--font-mono); font-size: var(--fs-11); color: var(--ink-dim); }
+.export-ask {
+  display: flex; align-items: baseline; gap: var(--s2);
+  font-size: var(--fs-13); color: var(--ink-soft); cursor: pointer;
+}
+.export-ask input { padding: 0; }
+/* On a phone the heading wraps and a floating menu runs off the right edge,
+   so it opens in the flow of the page instead. */
+@media (max-width: 600px) {
+  details.export[open] { flex-basis: 100%; }
+  .export-menu { position: static; width: auto; margin-top: var(--s1); box-shadow: none; }
+}
+
 .crumbs { display: flex; flex-wrap: wrap; gap: 6px; font-size: var(--fs-11); margin-bottom: var(--s1); }
 .crumb { color: var(--ink-dim); text-decoration: none; }
 .crumb:hover { color: var(--accent); text-decoration: underline; }

@@ -45,6 +45,11 @@ vulnerability regardless of how it got there.
 - No endpoint returns sample bytes. Text samples are shown decoded, with
   control characters removed and URLs and IPv4 addresses defanged. Binaries
   are described by metadata and filtered strings.
+- An export shows nothing the pages do not, and every recorded value in its
+  Markdown form sits inside a fence that text from a session cannot close.
+  Getting recorded text outside that fence is in scope. Persuading a model
+  that reads the fenced text is the reader's risk to manage, and the fence
+  reduces it without removing it.
 - The dashboard opens the database read-only, through both a read-only URI
   and a query-only connection.
 - Everything the collector receives from the sensor is parsed as hostile

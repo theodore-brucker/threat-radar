@@ -14,7 +14,7 @@
 import {
   api, h, num, panel, table, tag, mid, dur, entity, ipLink, dayLink, copyBtn,
   spark, stageTag, windowLabel, breadcrumbs, routeLink, cmdBlock, emptyState,
-  currentPath,
+  currentPath, exportControl,
 } from "../core.js";
 
 export let TITLE = "Entity";
@@ -336,6 +336,10 @@ export async function render() {
 
   const [factRows, panels] = BODY[etype](d);
 
+  // The path segment is still percent-encoded; the control encodes it again.
+  let exportId = raw;
+  try { exportId = decodeURIComponent(raw); } catch (err) { /* keep it as it came */ }
+
   return h("div", {}, [
     h("div", { class: "pagehead" }, [
       breadcrumbs(),
@@ -344,6 +348,7 @@ export async function render() {
         h("h1", { text: display }),
         copyBtn(copyValue),
         h("span", { class: "scope", text: meta.label }),
+        exportControl(etype, exportId),
       ]),
     ]),
 

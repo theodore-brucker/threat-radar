@@ -664,6 +664,85 @@ export function copyBtn(value) {
     () => value, "copy");
 }
 
+/* ---------- export -------------------------------------------------------
+   Every entity page carries one control that turns its record into a document
+   written for a language model: copy it, or save it as Markdown or JSON. The
+   server builds the document; nothing is assembled from the DOM.
+
+   The Markdown is fetched when the menu opens, not when copy is clicked. On
+   the plain-HTTP origins this site is served from, the clipboard fallback
+   only works inside the click itself, and a fetch in between would lose it.
+   Opening the menu is also what shows the size, which is worth knowing
+   before pasting into a context window. */
+
+export function exportControl(type, id) {
+  const path = `/api/v1/export/${encodeURIComponent(type)}/${encodeURIComponent(id)}`;
+  let brief = true;
+  try { brief = localStorage.getItem("tr.export.brief") !== "0"; } catch (err) { /* default */ }
+  let text = null;
+  let seq = 0;
+
+  const link = (format, download) => url(
+    `${path}?format=${format}&days=${state.days}&brief=${brief ? 1 : 0}${download ? "&download=1" : ""}`);
+
+  const size = h("span", { class: "export-size", role: "status" });
+  const copy = wireCopy(
+    h("button", { type: "button", class: "primary", disabled: true, text: "copy for a model" }),
+    () => text || "", "copy for a model");
+  const md = h("a", { class: "mono", download: true, text: "save .md" });
+  const json = h("a", { class: "mono", download: true, text: "save .json" });
+  const ask = h("input", { type: "checkbox" });
+  ask.checked = brief;
+
+  async function load() {
+    const mine = ++seq;
+    text = null;
+    copy.disabled = true;
+    size.textContent = "building";
+    md.setAttribute("href", link("md", true));
+    json.setAttribute("href", link("json", true));
+    try {
+      const res = await fetch(link("md", false), { headers: { Accept: "text/markdown" } });
+      if (!res.ok) throw new Error(String(res.status));
+      const body = await res.text();
+      if (mine !== seq) return;
+      text = body;
+      // Four characters a token is the usual rough figure for English and
+      // shell text. It is a guide for choosing a model, not a count.
+      size.textContent = `${bytes(new Blob([body]).size)}, about ${num(Math.ceil(body.length / 400) * 100)} tokens`;
+      copy.disabled = false;
+    } catch (err) {
+      if (mine === seq) size.textContent = "export unavailable";
+    }
+  }
+
+  ask.addEventListener("change", () => {
+    brief = ask.checked;
+    try { localStorage.setItem("tr.export.brief", brief ? "1" : "0"); } catch (err) { /* not kept */ }
+    load();
+  });
+
+  const box = h("details", {
+    class: "export",
+    ontoggle: () => { if (box.open && text === null) load(); },
+    onkeydown: (e) => {
+      if (e.key !== "Escape" || !box.open) return;
+      box.open = false;
+      box.querySelector("summary").focus();
+    },
+  }, [
+    h("summary", { title: "export this record for a language model (x)", text: "export" }),
+    h("div", { class: "export-menu" }, [
+      h("p", { text: "This record as one document for an AI analyst: what the sensor is, "
+        + "the evidence, and what was left out." }),
+      h("div", { class: "export-row" }, [copy, size]),
+      h("label", { class: "export-ask" }, [ask, " end with a request for analysis and recommendations"]),
+      h("div", { class: "export-row" }, [md, json]),
+    ]),
+  ]);
+  return box;
+}
+
 export function vtLink(sha, label) {
   return h("a", {
     class: "mono", target: "_blank", rel: "noreferrer noopener",

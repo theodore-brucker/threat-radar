@@ -332,6 +332,60 @@ def _strings(data, minlen=MIN_STRING_LEN, cap=MAX_STRINGS):
     return out, False
 
 
+def _sample_file(shasum):
+    """Path of a held sample, or None. The name is a validated sha256, and the
+    resolved path must still sit inside the sample directory."""
+    path = os.path.join(SAMPLE_DIR, shasum)
+    if os.path.isfile(path) and os.path.realpath(path).startswith(
+            os.path.realpath(SAMPLE_DIR) + os.sep):
+        return path
+    return None
+
+
+def sample_brief(con, shasum, text_bytes=4096):
+    """What a sample is, in a few fields, for a document that mentions several.
+
+    The same two rules as sample_detail: never bytes, and text only decoded
+    and defanged. It skips entropy, packing and strings, which cost a pass
+    over the file each and belong on the sample's own page.
+    """
+    shasum = (shasum or "").lower()
+    if not SHA_RE.match(shasum):
+        return None
+    if shasum == EMPTY_SHA:
+        return {"sha256": shasum, "present": False, "empty_transfer": True,
+                "note": "zero-byte transfer; nothing was written"}
+
+    out = {"sha256": shasum, "present": False}
+    out["intel"] = _rows(con.execute(
+        """SELECT source, verdict, malicious, suspicious, harmless, undetected,
+                  label FROM payload_intel WHERE indicator=?""", (shasum,)))
+    if _table_exists(con, "payload_families"):
+        fam = _rows(con.execute(
+            "SELECT family, confidence FROM payload_families WHERE shasum = ?",
+            (shasum,)))
+        if fam:
+            out["family"] = fam[0]
+
+    path = _sample_file(shasum)
+    if path is None:
+        return out
+    size = os.path.getsize(path)
+    with open(path, "rb") as fh:
+        head = fh.read(max(4096, int(text_bytes)))
+    kind, is_text = _identify(head[:4096])
+    out.update({"present": True, "size_bytes": size, "kind": kind,
+                "is_text": is_text, "trivial": size < MIN_SAMPLE_BYTES})
+    if out["trivial"]:
+        out["note"] = ("too small to be a functioning payload; recorded as an "
+                       "observation, not a specimen")
+    if is_text:
+        out["text"] = _safe_text(head[:int(text_bytes)])
+        out["defanged"] = True
+        out["truncated"] = size > int(text_bytes)
+    return out
+
+
 def sample_detail(con, shasum):
     """Metadata, and content only when it is text. Never raw bytes."""
     if not SHA_RE.match((shasum or "").lower()):
@@ -392,9 +446,8 @@ def sample_detail(con, shasum):
             fam = dict(zip(cols, row))
     out["family"] = fam
 
-    path = os.path.join(SAMPLE_DIR, shasum)
-    if not (os.path.isfile(path) and os.path.realpath(path).startswith(
-            os.path.realpath(SAMPLE_DIR) + os.sep)):
+    path = _sample_file(shasum)
+    if path is None:
         return out
 
     size = os.path.getsize(path)

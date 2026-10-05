@@ -8,12 +8,16 @@ Page routes return the same shell; the client router picks the view. Nothing
 here writes to the database, and nothing here scans raw_events for a list
 view. Detail endpoints for a single hash or address may touch raw_events
 because they are bounded by an indexed equality.
+
+The one response that is not the envelope is an export asked for as Markdown,
+which is a document for a reader rather than data for the page.
 """
 
 
 import logging
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from app.analytics import asn as asnmod
 from app.analytics import credentials as credmod
@@ -25,6 +29,7 @@ from app.analytics import escalation
 from app.analytics import families as fammod
 from app.analytics import lookup as lookupmod
 from app.analytics import exec_view
+from app.analytics import export as exportmod
 from app.analytics import fingerprints
 from app.analytics import funnel as funnelmod
 from app.analytics import overview as overviewmod
@@ -74,7 +79,7 @@ def meta():
         coverage = db.qone(
             con, "SELECT MIN(day) first_day, MAX(day) last_day FROM asn_ip_daily"
         ) or {}
-        return ok({"worker": state, "coverage": coverage, "version": "3.7.0"})
+        return ok({"worker": state, "coverage": coverage, "version": "3.8.0"})
     finally:
         con.close()
 
@@ -118,6 +123,41 @@ def entity(etype: str, value: str, days: int = Query(30, ge=1, le=3650)):
         return ok(data, days)
     finally:
         con.close()
+
+
+@router.get("/api/v1/export/{etype}/{value}")
+def export(etype: str, value: str,
+           days: int = Query(30, ge=1, le=3650),
+           format: str = Query("json", pattern="^(json|md)$"),
+           brief: int = Query(1, ge=0, le=1),
+           download: int = Query(0, ge=0, le=1)):
+    """One entity as a document for a language model. format=json answers the
+    usual envelope around the structured export; format=md answers the same
+    content as Markdown, with brief=0 leaving off the request for analysis.
+    download=1 names the file and asks the browser to save it."""
+    if etype not in exportmod.TYPES:
+        raise HTTPException(status_code=404, detail="unknown entity type")
+    con = _con()
+    try:
+        try:
+            bundle = exportmod.build(con, etype, value, days)
+        except entmod.BadEntity as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        if bundle is None:
+            raise HTTPException(status_code=404, detail="entity not seen")
+    finally:
+        con.close()
+
+    ext = "md" if format == "md" else "json"
+    headers = {"Cache-Control": "no-store"}
+    if download:
+        headers["Content-Disposition"] = (
+            'attachment; filename="%s"' % exportmod.filename(bundle, ext))
+    if format == "md":
+        return PlainTextResponse(
+            exportmod.to_markdown(bundle, brief=bool(brief)),
+            media_type="text/markdown; charset=utf-8", headers=headers)
+    return JSONResponse(ok(bundle, days), headers=headers)
 
 
 # --------------------------------------------------------------------------
