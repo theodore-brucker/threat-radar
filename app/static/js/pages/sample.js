@@ -3,7 +3,7 @@
 
 import { api, h, num, bytes, panel, table, tag, mid, takeaway, routeLink,
          vtLink, ipLink, entity, dayLink, copyBtn, emptyState, currentPath,
-         breadcrumbs } from "../core.js";
+         breadcrumbs, exportControl } from "../core.js";
 
 export const TITLE = "Sample";
 
@@ -102,6 +102,7 @@ export async function render() {
       h("div", { class: "enthead" }, [
         h("h1", { text: sha }),
         copyBtn(sha),
+        exportControl("sample", sha),
       ]),
       h("p", {}, [vtLink(sha, "open the VirusTotal report")]),
     ]),

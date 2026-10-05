@@ -88,7 +88,7 @@ pre.code, pre.cmd {
 }
 pre.code code, pre.cmd code { white-space: pre-wrap !important; }
 pre.cmd.clamped code { max-height: none !important; overflow: visible !important; }
-.cmdbar { display: none !important; }
+.cmdbar, details.export { display: none !important; }
 
 .empty { border: 1px solid #ccc; background: none; }
 .skel-bar, .skel-row { display: none; }

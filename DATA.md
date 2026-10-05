@@ -62,12 +62,22 @@ part of the system serves them.
 Nothing else is sent anywhere. The sensor's own address, the operator's
 addresses, and the persona are never submitted.
 
+An export leaves only by the operator's hand. The dashboard builds it and
+sends it nowhere, but it is written to be pasted into a language model, which
+is usually a third party. It carries what the entity's page shows: source
+addresses, credential pairs, commands, and defanged sample text. A command can
+contain the sensor's own address if the attacker typed it, so any strings
+listed in `TR_EXPORT_REDACT` (comma separated, in `/etc/threat-radar/web.env`)
+are replaced with `[redacted]` in every export.
+
 ## What the dashboard shows
 
 The dashboard is served on a private network behind authentication. It shows
 aggregates, source addresses and their networks, credential pairs, commands,
 session narratives, and sample analysis: text samples defanged and binaries
-described by metadata and strings. It offers no download of any sample.
+described by metadata and strings. It offers no download of any sample. Each
+entity page can export its own record as Markdown or JSON, which contains the
+same material and no more.
 
 ## The sensor's behaviour toward others
 

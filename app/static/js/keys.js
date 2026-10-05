@@ -20,6 +20,7 @@ const HELP = [
   ["w", "cycle the time window"],
   ["d", "compact or roomy rows"],
   ["t", "cycle the colour theme"],
+  ["x", "export the record on this page for a model"],
   ["j / k", "move down or up a table, once it has focus"],
   ["Enter", "open the focused row"],
   ["Esc", "close whatever is open"],
@@ -65,6 +66,7 @@ export function mountKeys() {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       if (sheet && sheet.open) sheet.close();
+      document.querySelectorAll("details.export[open]").forEach((d) => { d.open = false; });
       return;
     }
     if (typing() || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -80,9 +82,20 @@ export function mountKeys() {
       case "w": cycleWindow(); break;
       case "d": setDensity(state.density === "compact" ? "comfortable" : "compact"); break;
       case "t": cycleTheme(); break;
+      case "x": openExport(); break;
       default: break;
     }
   });
+}
+
+/* Only entity, session and sample pages have a record to export. Elsewhere
+   the key does nothing, which is what an unbound key does. */
+function openExport() {
+  const box = document.querySelector("#view details.export");
+  if (!box) return;
+  box.open = !box.open;
+  const target = box.open ? box.querySelector("button, a") : box.querySelector("summary");
+  if (target) target.focus();
 }
 
 function syncMode() {
