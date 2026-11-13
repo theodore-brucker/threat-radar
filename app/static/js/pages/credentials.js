@@ -6,7 +6,7 @@
  * where one pair ended and the next began. The count is its own element now,
  * and every pair is a separate chip. */
 
-import { api, h, num, pct, panel, table, stats, tag, entity, dayLink } from "../core.js";
+import { api, h, num, pct, panel, table, stats, tag, entity, dayLink, emptyState } from "../core.js";
 
 export const TITLE = "Credentials";
 
@@ -34,19 +34,19 @@ export async function render() {
     ]),
 
     stats([
-      { label: "campaigns", value: num(camps.length) },
-      { label: "tagged attempts", value: num(totalAttempts) },
-      { label: "clustered pairs", value: num(camps.reduce((a, c) => a + (c.pairs || 0), 0)) },
-      { label: "successes", value: num(camps.reduce((a, c) => a + (c.successes || 0), 0)), tone: "accent" },
+      { label: "Campaigns", value: num(camps.length) },
+      { label: "Tagged attempts", value: num(totalAttempts) },
+      { label: "Clustered pairs", value: num(camps.reduce((a, c) => a + (c.pairs || 0), 0)) },
+      { label: "Successes", value: num(camps.reduce((a, c) => a + (c.successes || 0), 0)), tone: "accent" },
     ]),
 
     panel("Campaigns",
       "Pairs are clustered by rule, so a hundred variations of one theme read as one "
       + "campaign. A pair can belong to more than one.",
       [table(
-        [{ label: "campaign" }, { label: "attempts", num: true }, { label: "share", num: true },
-         { label: "pairs", num: true }, { label: "source ips", num: true },
-         { label: "example pairs" }, { label: "last seen" }],
+        [{ label: "Campaign" }, { label: "Attempts", num: true }, { label: "Share", num: true },
+         { label: "Pairs", num: true }, { label: "Source addresses", num: true },
+         { label: "Example pairs" }, { label: "Last seen" }],
         camps,
         (r) => [
           [h("b", { text: r.label }), h("div", { class: "sub2 mono", text: r.tag })],
@@ -61,8 +61,8 @@ export async function render() {
 
     panel("Most attempted pairs", "Lifetime counts, unclustered.",
       [table(
-        [{ label: "username" }, { label: "password" }, { label: "attempts", num: true },
-         { label: "successes", num: true }, { label: "source ips", num: true }],
+        [{ label: "Username" }, { label: "Password" }, { label: "Attempts", num: true },
+         { label: "Successes", num: true }, { label: "Source addresses", num: true }],
         d.top_pairs || [],
         (r) => [
           entity("credential", { username: r.username, password: r.password },
@@ -71,14 +71,16 @@ export async function render() {
             r.password || "(blank)"),
           num(r.attempts), num(r.successes), num(r.distinct_ips),
         ],
-        "No login attempts recorded.")], { scoped: false }),
+        emptyState("No login attempts recorded yet.", {
+          hint: "This table counts every attempt the sensor has seen, so it fills as soon as anyone tries a password.",
+        }))]),
 
     (d.tiers || []).length
       ? panel("Credential tiers",
           "Whether the guess matched this host's persona, an adjacent one, or a generic list.",
           [table(
-            [{ label: "tier" }, { label: "attempts", num: true }, { label: "ips", num: true },
-             { label: "succeeded", num: true }],
+            [{ label: "Tier" }, { label: "Attempts", num: true }, { label: "Addresses", num: true },
+             { label: "Succeeded", num: true }],
             d.tiers,
             (r) => [r.cred_tier, num(r.attempts), num(r.ips), num(r.succeeded)],
             "No tiered attempts in this window.")])

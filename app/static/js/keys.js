@@ -13,17 +13,17 @@ import { cycleTheme } from "./theme.js";
 const SECTIONS = ["/", "/sources", "/credentials", "/payloads", "/sessions", "/tunnels", "/method"];
 
 const HELP = [
-  ["/", "focus the search box"],
-  ["? ", "this list"],
-  ["1 - 7", "jump to a section"],
-  ["e / a", "executive or analyst view"],
-  ["w", "cycle the time window"],
-  ["d", "compact or roomy rows"],
-  ["t", "cycle the colour theme"],
-  ["x", "export the record on this page for a model"],
-  ["j / k", "move down or up a table, once it has focus"],
-  ["Enter", "open the focused row"],
-  ["Esc", "close whatever is open"],
+  ["/", "Search for an address, hash, credential or date"],
+  ["?", "Show this list"],
+  ["1 to 7", "Go to a section"],
+  ["s or a", "Summary or analyst view of the overview"],
+  ["w", "Step through the time windows"],
+  ["d", "Compact or roomy table rows"],
+  ["t", "Step through the colour themes"],
+  ["x", "Export the record on this page for an AI model"],
+  ["j or k", "Move down or up a table once it has focus"],
+  ["Enter", "Open the focused row"],
+  ["Esc", "Close whatever is open"],
 ];
 
 let sheet = null;
@@ -34,8 +34,8 @@ function helpSheet() {
     h("dt", {}, [h("kbd", { text: k.trim() })]),
     h("dd", { text: v }),
   ]));
-  sheet = h("dialog", { class: "sheet", "aria-label": "keyboard shortcuts" }, [
-    h("h2", { text: "Keyboard" }),
+  sheet = h("dialog", { class: "sheet", "aria-label": "Keyboard shortcuts" }, [
+    h("h2", { text: "Keyboard shortcuts" }),
     dl,
     h("button", { type: "button", text: "Close", onclick: () => sheet.close() }),
   ]);
@@ -63,6 +63,8 @@ function cycleWindow() {
 }
 
 export function mountKeys() {
+  const open = document.getElementById("keys-open");
+  if (open) open.addEventListener("click", () => helpSheet().showModal());
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       if (sheet && sheet.open) sheet.close();
@@ -77,6 +79,7 @@ export function mountKeys() {
     if (n >= 1 && n <= SECTIONS.length) { e.preventDefault(); navigate(SECTIONS[n - 1]); return; }
 
     switch (e.key) {
+      case "s":
       case "e": setMode("exec"); syncMode(); render(); break;
       case "a": setMode("analyst"); syncMode(); render(); break;
       case "w": cycleWindow(); break;

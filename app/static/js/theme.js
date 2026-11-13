@@ -6,7 +6,11 @@
  * sees a white flash; this module only handles switching after load.
  */
 
+import { icon } from "./icons.js";
+
 const ORDER = ["auto", "light", "dark"];
+const NAMES = { auto: "follow the system", light: "light", dark: "dark" };
+const ICON = { auto: "sun-moon", light: "sun", dark: "moon" };
 const KEY = "tr.theme";
 
 function stored() {
@@ -22,8 +26,12 @@ export function applyTheme(pref) {
   document.documentElement.dataset.theme = dark ? "dark" : "light";
   const btn = document.getElementById("theme-toggle");
   if (btn) {
-    btn.textContent = pref;
-    btn.setAttribute("title", `colour theme: ${pref}${pref === "auto" ? ` (${dark ? "dark" : "light"})` : ""}`);
+    const next = ORDER[(ORDER.indexOf(pref) + 1) % ORDER.length];
+    const label = `Colour theme: ${NAMES[pref]}${pref === "auto" ? ` (${dark ? "dark" : "light"} now)` : ""}. `
+      + `Switch to ${NAMES[next]} (t)`;
+    btn.replaceChildren(icon(ICON[pref] || "sun-moon"));
+    btn.setAttribute("aria-label", label);
+    btn.setAttribute("title", label);
   }
 }
 

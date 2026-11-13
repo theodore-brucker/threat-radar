@@ -6,7 +6,7 @@
  * handful of amber and red points are the story.
  */
 
-import { h, num, state, isExec, url, STAGE_COLORS, STAGE_LABELS } from "./core.js";
+import { h, num, state, isExec, url, place, STAGE_COLORS, STAGE_LABELS } from "./core.js";
 
 const W = 720, H = 360;
 let worldCache = null;
@@ -85,9 +85,9 @@ export async function escalationMap(points, legend) {
       tip.replaceChildren(
         h("div", { class: "mono", text: p.src_ip }),
         h("div", { style: `color:var(${STAGE_COLORS[stage]})`,
-                   text: `stage ${stage} \u00b7 ${STAGE_LABELS[stage]}` }),
-        h("div", { text: `${num(p.sessions)} sessions · ${num(p.events)} events` }),
-        h("div", { text: [p.org, p.country].filter(Boolean).join(" · ") || "unattributed" }),
+                   text: `Stage ${stage}: ${STAGE_LABELS[stage]}` }),
+        h("div", { text: `${num(p.sessions)} sessions, ${num(p.events)} events` }),
+        h("div", { text: place(p.org, p.country) || "No network on record" }),
         p.transfers ? h("div", { text: `${num(p.transfers)} file transfers` }) : null,
       );
       tip.style.left = `${Math.min(e.clientX - rect.left + 14, rect.width - 270)}px`;
@@ -102,7 +102,7 @@ export async function escalationMap(points, legend) {
   const counts = {};
   (legend || []).forEach((l) => { counts[l.stage] = l.sources; });
 
-  // Executive mode: two entries, because five is a legend to memorise.
+  // Summary mode: two entries, because five is a legend to memorise.
   const entries = isExec()
     ? [
         { color: "--stage-0", label: "stopped at the door", hollow: true,
@@ -111,7 +111,7 @@ export async function escalationMap(points, legend) {
           n: (counts[2] || 0) + (counts[3] || 0) + (counts[4] || 0) },
       ]
     : STAGE_LABELS.map((label, i) => ({
-        color: STAGE_COLORS[i], label: `${i} ${label}`, hollow: i <= 1, n: counts[i] || 0 }));
+        color: STAGE_COLORS[i], label: `${label} (stage ${i})`, hollow: i <= 1, n: counts[i] || 0 }));
 
   const legendEl = h("div", { class: "legend" }, entries.map((e) =>
     h("span", {}, [
@@ -121,7 +121,7 @@ export async function escalationMap(points, legend) {
       ` ${e.label}`,
     ])).concat([
       h("span", { style: "margin-left:auto",
-        text: `${points.length} of the busiest sources shown` }),
+        text: `Showing the ${points.length} busiest sources` }),
     ]));
 
   wrap.append(svg, tip);

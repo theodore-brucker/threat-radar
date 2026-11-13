@@ -14,39 +14,40 @@
 import {
   api, h, num, panel, table, tag, mid, dur, entity, ipLink, dayLink, copyBtn,
   spark, stageTag, windowLabel, breadcrumbs, routeLink, cmdBlock, emptyState,
-  currentPath, exportControl,
+  currentPath, exportControl, place, pageState, errorState, widenButton, backLink,
 } from "../core.js";
 
 export let TITLE = "Entity";
+export let DOC_TITLE = "";
 
 const META = {
-  ip: { label: "Address", back: ["/sources", "back to sources"] },
-  asn: { label: "Network", back: ["/sources", "back to sources"] },
-  credential: { label: "Credential pair", back: ["/credentials", "back to credentials"] },
-  hassh: { label: "Client fingerprint", back: ["/sources", "back to sources"] },
-  url: { label: "Fetch URL", back: ["/payloads", "back to malware"] },
-  day: { label: "Day", back: ["/", "back to overview"] },
+  ip: { label: "Address", back: ["/sources", "Sources"] },
+  asn: { label: "Network", back: ["/sources", "Sources"] },
+  credential: { label: "Credential pair", back: ["/credentials", "Credentials"] },
+  hassh: { label: "Client fingerprint", back: ["/sources", "Sources"] },
+  url: { label: "Fetch URL", back: ["/payloads", "Malware"] },
+  day: { label: "Day", back: ["/", "Overview"] },
 };
 
 function facts(rows) {
   const keep = rows.filter(([, v]) => v !== null && v !== undefined && v !== "");
   return h("dl", { class: "facts" }, keep.flatMap(([k, v]) => [
     h("dt", { text: k }),
-    h("dd", { class: "mono" }, [typeof v === "object" ? v : String(v)]),
+    h("dd", {}, [typeof v === "object" ? v : String(v)]),
   ]));
 }
 
 function ipTable(rows, empty) {
   return table(
-    [{ label: "address" }, { label: "stage", sort: (r) => Number(r.stage || 0) },
-     { label: "network" }, { label: "attempts", num: true },
-     { label: "first" }, { label: "last" }],
+    [{ label: "Address" }, { label: "Stage", sort: (r) => Number(r.stage || 0) },
+     { label: "Network" }, { label: "Attempts", num: true },
+     { label: "First seen" }, { label: "Last seen" }],
     rows,
     (r) => [
       ipLink(r.src_ip),
       r.stage !== null && r.stage !== undefined ? stageTag(r.stage) : "-",
       [entity("asn", r.asn, r.asn || "-"),
-       h("div", { class: "sub2", text: [r.org, r.country].filter(Boolean).join(" \u00b7 ") })],
+       h("div", { class: "sub2", text: place(r.org, r.country) })],
       num(r.attempts !== undefined ? r.attempts : r.events),
       dayLink(r.first_day || r.first_seen),
       dayLink(r.last_day || r.last_seen),
@@ -56,9 +57,9 @@ function ipTable(rows, empty) {
 
 function sessionsTable(rows) {
   return table(
-    [{ label: "session" }, { label: "started" }, { label: "user" },
-     { label: "cmds", num: true }, { label: "files", num: true },
-     { label: "duration" }],
+    [{ label: "Session" }, { label: "Started" }, { label: "User" },
+     { label: "Commands", num: true }, { label: "Files", num: true },
+     { label: "Duration" }],
     rows,
     (r) => [
       entity("session", r.session),
@@ -93,8 +94,8 @@ const BODY = {
       [
         panel("Credentials tried", "Pairs this address pushed, most attempted first.", [
           table(
-            [{ label: "pair" }, { label: "attempts", num: true },
-             { label: "succeeded", num: true }, { label: "first" }, { label: "last" }],
+            [{ label: "Credential pair" }, { label: "Attempts", num: true },
+             { label: "Succeeded", num: true }, { label: "First seen" }, { label: "Last seen" }],
             rel.credentials || [],
             (r) => [
               entity("credential", { username: r.username, password: r.password }),
@@ -105,7 +106,7 @@ const BODY = {
         ]),
         panel("Client fingerprints", "Tool signatures this address presented.", [
           table(
-            [{ label: "hassh" }, { label: "events", num: true }, { label: "last" }],
+            [{ label: "HASSH" }, { label: "Events", num: true }, { label: "Last seen" }],
             rel.fingerprints || [],
             (r) => [
               [entity("hassh", r.hassh, mid(r.hassh, 12, 6)),
@@ -116,8 +117,8 @@ const BODY = {
         ]),
         panel("Files moved", "Lifetime, both directions.", [
           table(
-            [{ label: "sha256" }, { label: "dir" }, { label: "url" },
-             { label: "sightings", num: true }, { label: "last" }],
+            [{ label: "SHA-256" }, { label: "Direction" }, { label: "URL" },
+             { label: "Sightings", num: true }, { label: "Last seen" }],
             rel.samples || [],
             (r) => [
               entity("sample", r.shasum, mid(r.shasum, 12, 6)),
@@ -160,8 +161,8 @@ const BODY = {
     const p = d.profile || {};
     return [
       [
-        ["username", p.username || "(blank)"],
-        ["password", p.password || "(blank)"],
+        ["username", h("span", { class: "mono", text: p.username || "(blank)" })],
+        ["password", h("span", { class: "mono", text: p.password || "(blank)" })],
         ["campaigns", (p.tags || []).length
           ? h("span", {}, (p.tags || []).map((t) => tag(t))) : null],
         ["attempts", num(p.attempts)],
@@ -184,7 +185,7 @@ const BODY = {
         ["signature type", p.known_kind === "library"
           ? "library default (not a cluster key)"
           : p.known_kind === "toolmark" ? "toolmark" : null],
-        ["client banner", p.version],
+        ["client banner", p.version ? h("span", { class: "mono", text: p.version }) : null],
         ["events", num(p.events)],
         ["sessions", num(p.sessions)],
         ["active days", num(p.active_days)],
@@ -212,7 +213,7 @@ const BODY = {
     const bad = (d.intel || []).find((i) => i.verdict === "malicious" || i.verdict === "suspicious");
     return [
       [
-        ["host", p.host],
+        ["host", p.host ? h("span", { class: "mono", text: p.host }) : null],
         ["standing", bad ? tag(`${bad.verdict} (${bad.source})`, "bad")
           : (d.intel || []).length ? tag("no vendor flag", "") : null],
         ["family", bad && bad.label ? bad.label : null],
@@ -225,8 +226,8 @@ const BODY = {
       [
         panel("Files it delivered", null, [
           table(
-            [{ label: "sha256" }, { label: "dir" }, { label: "filename" },
-             { label: "hits", num: true }, { label: "last" }],
+            [{ label: "SHA-256" }, { label: "Direction" }, { label: "Filename" },
+             { label: "Hits", num: true }, { label: "Last seen" }],
             rel.samples || [],
             (r) => [
               entity("sample", r.shasum, mid(r.shasum, 12, 6)),
@@ -238,7 +239,7 @@ const BODY = {
         ], { scoped: false }),
         panel("Sightings", "Newest first.", [
           table(
-            [{ label: "when" }, { label: "session" }, { label: "source" }],
+            [{ label: "When" }, { label: "Session" }, { label: "Source" }],
             rel.sightings || [],
             (r) => [dayLink(r.ts), entity("session", r.session), ipLink(r.src_ip)],
             "No sightings recorded."),
@@ -264,22 +265,22 @@ const BODY = {
         sp && sp.headline ? h("p", { class: "takeaway" }, [sp.headline]) : null,
         panel("Sources that day", "Ranked by how far each address got.", [
           table(
-            [{ label: "address" }, { label: "stage", sort: (r) => Number(r.stage || 0) },
-             { label: "sessions", num: true }, { label: "cmds", num: true },
-             { label: "files", num: true }, { label: "network" }],
+            [{ label: "Address" }, { label: "Stage", sort: (r) => Number(r.stage || 0) },
+             { label: "Sessions", num: true }, { label: "Commands", num: true },
+             { label: "Files", num: true }, { label: "Network" }],
             rel.ips || [],
             (r) => [
               ipLink(r.src_ip), stageTag(r.stage),
               num(r.sessions), num(r.commands), num(r.transfers),
               [entity("asn", r.asn, r.asn || "-"),
-               h("div", { class: "sub2", text: [r.org, r.country].filter(Boolean).join(" \u00b7 ") })],
+               h("div", { class: "sub2", text: place(r.org, r.country) })],
             ],
             "No sources recorded on this day."),
         ], { scoped: false }),
         h("div", { class: "grid g2" }, [
           panel("Credentials that day", null, [
             table(
-              [{ label: "pair" }, { label: "attempts", num: true }, { label: "ips", num: true }],
+              [{ label: "Credential pair" }, { label: "Attempts", num: true }, { label: "Addresses", num: true }],
               rel.credentials || [],
               (r) => [
                 entity("credential", { username: r.username, password: r.password }),
@@ -289,7 +290,7 @@ const BODY = {
           ], { scoped: false }),
           panel("Files that day", null, [
             table(
-              [{ label: "sha256" }, { label: "dir" }, { label: "hits", num: true }],
+              [{ label: "SHA-256" }, { label: "Direction" }, { label: "Hits", num: true }],
               rel.payloads || [],
               (r) => [
                 entity("sample", r.shasum, mid(r.shasum, 12, 6)),
@@ -313,17 +314,39 @@ export async function render() {
   const etype = parts[0] || "";
   const raw = parts[1] || "";
   const meta = META[etype];
-  if (!meta) return emptyState("Unknown entity type.");
-  TITLE = meta.label;
-
+  TITLE = meta ? meta.label : "Page not found";
+  DOC_TITLE = TITLE;
+  if (!meta) {
+    return pageState({ title: "There is no page at this address.",
+      text: "Entity pages exist for addresses, networks, credentials, fingerprints, URLs and days." });
+  }
+  let shown = raw;
+  try { shown = decodeURIComponent(raw); } catch (err) { /* keep it as it came */ }
+  if (etype !== "credential" && etype !== "url") DOC_TITLE = `${shown} (${meta.label})`;
   let d;
   try {
     d = await api(`/api/v1/entity/${encodeURIComponent(etype)}/${encodeURIComponent(raw)}`);
   } catch (err) {
-    return emptyState(`Nothing recorded for this ${meta.label.toLowerCase()}.`, {
-      hint: "It may be outside the current window, or it may never have been seen.",
-      widen: true,
-    });
+    if (err && err.status === 404) {
+      return pageState({
+        iconName: "search-x",
+        title: `Nothing is recorded for this ${meta.label.toLowerCase()}.`,
+        text: `The sensor has no record of ${etype === "credential" || etype === "url"
+          ? `this ${meta.label.toLowerCase()}` : shown} in ${windowLabel()}. It may be older `
+          + "than the window, or it may never have touched the sensor.",
+        actions: [widenButton(), routeLink(meta.back[0], `Back to ${meta.back[1].toLowerCase()}`, "action")]
+          .filter(Boolean),
+      });
+    }
+    if (err && err.status === 400) {
+      return pageState({
+        iconName: "search-x",
+        title: `That is not a ${meta.label.toLowerCase()} this site can look up.`,
+        text: err.detail ? `The server said: ${err.detail}.` : "Check the value in the address bar.",
+        actions: [routeLink(meta.back[0], `Back to ${meta.back[1].toLowerCase()}`, "action")],
+      });
+    }
+    return errorState(err);
   }
 
   const p = d.profile || {};
@@ -342,8 +365,7 @@ export async function render() {
 
   return h("div", {}, [
     h("div", { class: "pagehead" }, [
-      breadcrumbs(),
-      h("p", {}, [routeLink(meta.back[0], meta.back[1], "")]),
+      breadcrumbs() || backLink(meta.back[0], meta.back[1]),
       h("div", { class: "enthead" }, [
         h("h1", { text: display }),
         copyBtn(copyValue),

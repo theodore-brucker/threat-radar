@@ -7,8 +7,9 @@ export const TITLE = "Relay attempts";
 export async function render() {
   const d = await api("/api/v1/tunnels");
   if (!d.built) {
-    return emptyState("This view has not been built yet.", {
-      hint: "Run the enrichment worker once and it will populate.",
+    return emptyState("Relay attempts have not been analysed yet.", {
+      hint: "This page fills in after the next scheduled analysis run, which happens a "
+        + "few times a day.",
     });
   }
   const t = d.totals || {};
@@ -16,26 +17,27 @@ export async function render() {
   return h("div", {}, [
     h("div", { class: "pagehead" }, [
       h("p", { text:
-        "Cowrie never actually forwards anything, but it records every request. The "
-        + "destination and port say what the operator wanted the box for: an open relay, "
-        + "a proxy check, a mining pool, or a way into someone else's network." }),
+        "Some intruders ask the server to forward their traffic somewhere else. The "
+        + "sensor never forwards anything, but it records every request, and the "
+        + "destination and port say what the operator wanted the machine for: an open "
+        + "relay, a proxy check, a mining pool, or a way into someone else's network." }),
     ]),
     stats([
-      { label: "forward requests", value: num(t.requests) },
-      { label: "destinations", value: num(t.destinations) },
-      { label: "ports", value: num(t.ports) },
-      { label: "data events", value: num(t.data_events) },
+      { label: "Forward requests", value: num(t.requests) },
+      { label: "Destinations", value: num(t.destinations) },
+      { label: "Ports", value: num(t.ports) },
+      { label: "Data events", value: num(t.data_events) },
     ]),
 
     h("div", { class: "grid g2" }, [
       panel("Intent", "Inferred from the destination port.",
-        [table([{ label: "intent" }, { label: "requests", num: true }], d.by_intent,
+        [table([{ label: "Intent" }, { label: "Requests", num: true }], d.by_intent,
           (r) => [r.intent, num(r.requests)],
           "No forward requests in this window.")]),
       panel("Ports", null,
         [table(
-          [{ label: "port", num: true }, { label: "service" },
-           { label: "requests", num: true }, { label: "hosts", num: true }],
+          [{ label: "Port", num: true }, { label: "Service" },
+           { label: "Requests", num: true }, { label: "Hosts", num: true }],
           d.by_port,
           (r) => [h("span", { class: "mono", text: r.dst_port }), r.service,
                   num(r.requests), num(r.destinations)],
@@ -44,8 +46,8 @@ export async function render() {
 
     panel("Destinations", null,
       [table(
-        [{ label: "destination" }, { label: "port", num: true }, { label: "intent" },
-         { label: "requests", num: true }, { label: "sessions", num: true }, { label: "last" }],
+        [{ label: "Destination" }, { label: "Port", num: true }, { label: "Intent" },
+         { label: "Requests", num: true }, { label: "Sessions", num: true }, { label: "Last seen" }],
         d.by_destination,
         (r) => [
           h("span", { class: "mono", text: r.dst_ip }),
@@ -60,15 +62,15 @@ export async function render() {
         "JA4H when the client spoke HTTP through the forward, which is what separates a "
         + "proxy checker from a pivot attempt.",
         [table(
-          [{ label: "fingerprint" }, { label: "hits", num: true }, { label: "ips", num: true }],
+          [{ label: "Fingerprint" }, { label: "Hits", num: true }, { label: "Addresses", num: true }],
           d.fingerprints,
           (r) => [h("span", { class: "mono", text: mid(r.fingerprint, 22, 8) }),
                   num(r.hits), num(r.src_ips)],
           "No HTTP was spoken through a forward in this window.")]),
       panel("Who asked", null,
         [table(
-          [{ label: "source" }, { label: "requests", num: true },
-           { label: "destinations", num: true }, { label: "ports", num: true }],
+          [{ label: "Source" }, { label: "Requests", num: true },
+           { label: "Destinations", num: true }, { label: "Ports", num: true }],
           d.requesters,
           (r) => [ipLink(r.src_ip), num(r.requests), num(r.destinations), num(r.ports)],
           "Nobody requested a forward in this window.")]),

@@ -33,8 +33,8 @@ get() {
   local label="$1" path="$2" want="${3:-}"
   local body="$TMP/body" code ms
   # -g turns off curl's URL globbing. Without it a path containing [ or ]
-  # (the variable font filename is PublicSans[wght].ttf) is read as a range
-  # specification and curl fails before it opens a connection.
+  # is read as a range specification and curl fails before it opens a
+  # connection. No current asset has brackets, but entity routes can.
   read -r code ms < <(curl -g -sS -o "$body" -w '%{http_code} %{time_total}\n' \
     -H 'Accept: application/json' "$ROOT$path" 2>/dev/null || echo "000 0")
   local msi
@@ -223,7 +223,8 @@ for A in \
   "/static/css/print.css" "/static/js/boot.js" "/static/js/core.js" \
   "/static/js/rail.js" "/static/js/theme.js" "/static/js/keys.js" \
   "/static/js/pages/overview.js" "/static/js/pages/entity.js" \
-  "/static/vendor/world.json" "/static/fonts/PublicSans[wght].ttf"
+  "/static/js/icons.js" "/static/favicon.svg" \
+  "/static/vendor/world.json" "/static/fonts/IBMPlexSans-Latin-Var.woff2"
 do
   get "asset $A" "$A"
 done

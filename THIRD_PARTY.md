@@ -7,21 +7,35 @@ design.
 
 ## Fonts
 
-`app/static/fonts/IBMPlexMono-Regular.ttf`, `app/static/fonts/IBMPlexMono-Medium.ttf`
+`app/static/fonts/IBMPlexSans-Latin-Var.woff2`
 
-IBM Plex Mono, copyright IBM Corp., with Reserved Font Name "Plex". Licensed
-under the SIL Open Font License, Version 1.1. The licence text ships alongside
-the fonts as `IBMPlexMono-LICENSE.txt`, which the OFL requires when the font
-files are redistributed.
+IBM Plex Sans, variable weight, Latin subset. Copyright IBM Corp., with
+Reserved Font Name "Plex". Licensed under the SIL Open Font License, Version
+1.1. The licence text ships alongside the font as `IBMPlexSans-LICENSE.txt`.
 
-`app/static/fonts/PublicSans[wght].ttf`
+`app/static/fonts/IBMPlexMono-Latin-400.woff2`, `app/static/fonts/IBMPlexMono-Latin-500.woff2`
 
-Public Sans, a modified version of Libre Franklin produced by the General
-Services Administration. Licensed under the SIL Open Font License, Version 1.1.
-The licence text ships alongside the font as `PublicSans-LICENSE.md`.
+IBM Plex Mono, Latin subset. Copyright IBM Corp., with Reserved Font Name
+"Plex". Licensed under the SIL Open Font License, Version 1.1. The licence
+text ships alongside the fonts as `IBMPlexMono-LICENSE.txt`, which the OFL
+requires when the font files are redistributed.
 
-Both files are fetched by `bin/fetch_fonts.sh` from the Google Fonts
-repository, which is also where the licence texts come from.
+The WOFF2 files are the Fontsource builds (`@fontsource-variable/ibm-plex-sans`
+and `@fontsource/ibm-plex-mono`, version 5.3.0), fetched by
+`bin/fetch_fonts.sh`. The licence texts come from the Google Fonts repository.
+
+## Icons
+
+`app/static/js/icons.js`
+
+Path data for a small set of icons taken from Lucide (`lucide-static` 1.72.0),
+copyright Lucide Icons and Contributors, licensed under the ISC License. A few
+of those glyphs (search, check, the chevrons, external-link, arrow-left,
+minus) descend from Feather, copyright Cole Bemis, under the MIT License. Both
+notices ship in full as `app/static/vendor/lucide-LICENSE.txt`.
+
+The Threat Radar mark (`app/static/favicon.svg` and the PNGs beside it) is
+original to this project and covered by the project licence.
 
 ## Map outline
 

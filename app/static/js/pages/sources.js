@@ -9,7 +9,7 @@
 
 import {
   api, h, num, pct, panel, table, stats, state, stageTag, bar, tag, mid,
-  entity, ipLink, dayLink, clearCache, render as rerender,
+  entity, ipLink, dayLink, clearCache, render as rerender, place,
 } from "../core.js";
 import { railStrip } from "../rail.js";
 
@@ -33,12 +33,12 @@ export async function render() {
     || d.sources.length;
 
   root.append(
-    h("div", { style: "margin-bottom:16px" }, [strip]),
+    strip,
     stats([
-      { label: "sources in window", value: num(inWindow) },
-      { label: "reached a shell", value: num((totals[2] || 0) + (totals[3] || 0) + (totals[4] || 0)) },
-      { label: "moved a file", value: num((totals[3] || 0) + (totals[4] || 0)) },
-      { label: "flagged malware", value: num(totals[4] || 0), tone: "bad" },
+      { label: "Sources in this window", value: num(inWindow) },
+      { label: "Reached a shell", value: num((totals[2] || 0) + (totals[3] || 0) + (totals[4] || 0)) },
+      { label: "Moved a file", value: num((totals[3] || 0) + (totals[4] || 0)) },
+      { label: "Flagged malware", value: num(totals[4] || 0), tone: "bad" },
     ]),
 
     panel("Networks by what their traffic did",
@@ -48,16 +48,16 @@ export async function render() {
       + "say which you are looking at. The category describes observed behaviour, not "
       + "who operates the network.",
       [table(
-        [{ label: "reached", sort: (r) => Number(r.depth || 0) },
-         { label: "network" }, { label: "category" },
-         { label: "events", num: true }, { label: "share", num: true },
-         { label: "ips", num: true }, { label: "busiest address" },
-         { label: "flags" }],
+        [{ label: "Reached", sort: (r) => Number(r.depth || 0) },
+         { label: "Network" }, { label: "Category" },
+         { label: "Events", num: true }, { label: "Share", num: true },
+         { label: "Addresses", num: true }, { label: "Busiest address" },
+         { label: "Flags" }],
         (d.asn_abuse && d.asn_abuse.asns) || [],
         (r) => [
           stageTag(r.depth),
           [entity("asn", r.asn),
-           h("div", { class: "sub2", text: [r.org, r.country].filter(Boolean).join(" \u00b7 ") })],
+           h("div", { class: "sub2", text: place(r.org, r.country) })],
           [h("div", { text: r.class_label || "-" }),
            r.reason
              ? h("div", { class: "sub2 trunc", title: r.reason, text: r.reason })
@@ -75,17 +75,17 @@ export async function render() {
     panel("Sources by escalation",
       "Ranked by how far each address got, then by volume.",
       [table(
-        [{ label: "address" }, { label: "stage", sort: (r) => Number(r.stage || 0) },
-         { label: "sessions", num: true }, { label: "events", num: true },
-         { label: "cmds", num: true }, { label: "files", num: true },
-         { label: "network" }, { label: "last seen" }],
+        [{ label: "Address" }, { label: "Stage", sort: (r) => Number(r.stage || 0) },
+         { label: "Sessions", num: true }, { label: "Events", num: true },
+         { label: "Commands", num: true }, { label: "Files", num: true },
+         { label: "Network" }, { label: "Last seen" }],
         d.sources,
         (r) => [
           ipLink(r.src_ip),
           stageTag(r.stage),
           num(r.sessions), num(r.events), num(r.commands), num(r.transfers),
           [entity("asn", r.asn, r.asn || "-"),
-           h("div", { class: "sub2", text: [r.org, r.country].filter(Boolean).join(" \u00b7 ") })],
+           h("div", { class: "sub2", text: place(r.org, r.country) })],
           dayLink(r.last_seen),
         ],
         "No sources matched this filter in this window.")]),
@@ -97,8 +97,8 @@ export async function render() {
         + "such: shared use of it says nothing about shared tooling, and clustering on it "
         + "would invent a link.",
         [table(
-          [{ label: "hassh" }, { label: "banner" }, { label: "events", num: true },
-           { label: "share", num: true }],
+          [{ label: "HASSH" }, { label: "Banner" }, { label: "Events", num: true },
+           { label: "Share", num: true }],
           (d.fingerprints && d.fingerprints.fingerprints) || [],
           (r) => [
             [entity("hassh", r.hassh, mid(r.hassh, 12, 6)),
@@ -116,7 +116,7 @@ export async function render() {
 
       panel("Source countries", "By event volume, from the geo enrichment.",
         [table(
-          [{ label: "country" }, { label: "sources", num: true }, { label: "events", num: true }],
+          [{ label: "Country" }, { label: "Sources", num: true }, { label: "Events", num: true }],
           d.countries || [],
           (r) => [r.country || r.code || "-", num(r.sources), num(r.events)],
           "No geolocated sources in this window.")]),

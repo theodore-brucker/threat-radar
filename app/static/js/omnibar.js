@@ -41,8 +41,8 @@ export function resolveExact(raw) {
 
 function kindLabel(t) {
   return {
-    ip: "address", asn: "network", credential: "credential", url: "url",
-    session: "session", sample: "sample", hassh: "fingerprint", day: "day",
+    ip: "Address", asn: "Network", credential: "Credential", url: "URL",
+    session: "Session", sample: "Sample", hassh: "Fingerprint", day: "Day",
   }[t] || t;
 }
 
@@ -58,6 +58,7 @@ export function mountOmnibar() {
   const close = () => {
     drop.replaceChildren();
     drop.hidden = true;
+    input.setAttribute("aria-expanded", "false");
     items = [];
     cursor = -1;
   };
@@ -79,26 +80,48 @@ export function mountOmnibar() {
     if (it) go(it.path);
   });
 
-  const paint = () => {
+  /* No match is an answer too: say so, and say what the box understands,
+     rather than leaving the reader wondering whether the search ran. */
+  const paint = (q, failed = false) => {
+    if (!items.length) {
+      const shown = q.trim().length > 40 ? mid(q.trim(), 24, 12) : q.trim();
+      drop.replaceChildren(h("li", { class: "omni-none", role: "option", "aria-disabled": "true" }, failed
+        ? [h("b", { text: "Search is not answering right now." }),
+           "A complete address, hash or date still opens its page when you press Enter."]
+        : [h("b", { text: `No match for ${shown}` }),
+           "Try a full address, a 64-character sha256, user:pass, an AS number such as "
+             + "AS14061, or a date such as 2026-11-01."]));
+      drop.hidden = false;
+      input.setAttribute("aria-expanded", "true");
+      return;
+    }
     drop.replaceChildren(...items.map((it, i) =>
-      h("li", { class: i === cursor ? "omni-item sel" : "omni-item", "data-i": String(i) }, [
+      h("li", {
+        class: i === cursor ? "omni-item sel" : "omni-item", "data-i": String(i),
+        role: "option", "aria-selected": String(i === cursor),
+      }, [
         h("span", { class: "omni-kind", text: kindLabel(it.kind) }),
         h("span", { class: "omni-label mono", text: it.label }),
         it.sub ? h("span", { class: "omni-sub", text: it.sub }) : null,
       ])));
-    drop.hidden = !items.length;
+    drop.hidden = false;
+    input.setAttribute("aria-expanded", "true");
   };
 
   const highlight = () => {
-    [...drop.children].forEach((li, i) => li.classList.toggle("sel", i === cursor));
+    [...drop.children].forEach((li, i) => {
+      li.classList.toggle("sel", i === cursor);
+      li.setAttribute("aria-selected", String(i === cursor));
+    });
   };
 
   const suggest = async (q) => {
     const mine = ++seq;
     const exact = resolveExact(q);
     const next = [];
+    let failed = false;
     if (exact) {
-      next.push({ path: exact, kind: exact.split("/")[1], label: q.trim(), sub: "open directly" });
+      next.push({ path: exact, kind: exact.split("/")[1], label: q.trim(), sub: "Open its page" });
     }
     if (q.trim().length >= 2) {
       try {
@@ -115,13 +138,18 @@ export function mountOmnibar() {
               sub: r.sub,
             });
           }
+        } else if (!res.ok) {
+          failed = true;
         }
-      } catch (err) { /* a failed lookup just means no suggestions */ }
+      } catch (err) { failed = true; }
     }
     if (mine !== seq) return;
     items = next.slice(0, 12);
     cursor = items.length ? 0 : -1;
-    paint();
+    // A single character is still being typed; only report "no match" once
+    // there is enough to have searched for.
+    if (!items.length && q.trim().length < 2) { close(); return; }
+    paint(q, failed);
   };
 
   let timer = null;

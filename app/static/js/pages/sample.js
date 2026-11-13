@@ -3,9 +3,10 @@
 
 import { api, h, num, bytes, panel, table, tag, mid, takeaway, routeLink,
          vtLink, ipLink, entity, dayLink, copyBtn, emptyState, currentPath,
-         breadcrumbs, exportControl } from "../core.js";
+         breadcrumbs, exportControl, pageState, errorState, backLink } from "../core.js";
 
 export const TITLE = "Sample";
+export let DOC_TITLE = "Sample";
 
 function packerPanel(pk) {
   if (!pk) return null;
@@ -22,7 +23,7 @@ function packerPanel(pk) {
   return panel("Packing", null, [
     h("dl", { class: "facts" }, rows.flatMap(([k, v]) => [
       h("dt", { text: k }),
-      h("dd", { class: "mono", text: String(v) }),
+      h("dd", { text: String(v) }),
     ])),
     pk.note ? takeaway([{ alarm: pk.note }]) : null,
   ], { scoped: false });
@@ -43,8 +44,10 @@ function contributionPanel(c) {
     `uploaded to ${names[k] || k}`,
     h("span", {}, [
       dayLink(v.submitted_at), " ",
-      h("a", { target: "_blank", rel: "noreferrer noopener", href: v.permalink || "#",
-               text: "public record" }),
+      v.permalink
+        ? h("a", { target: "_blank", rel: "noreferrer noopener", href: v.permalink,
+                   text: "public record" })
+        : h("span", { class: "sub2", text: "no public link recorded" }),
     ]),
   ]);
   if (c.attribution) rows.push(["attribution", verdict[c.attribution] || c.attribution]);
@@ -55,20 +58,30 @@ function contributionPanel(c) {
   return panel("Contributed upstream", null, [
     h("dl", { class: "facts" }, rows.flatMap(([k, v]) => [
       h("dt", { text: k }),
-      h("dd", { class: "mono" }, [typeof v === "object" ? v : String(v)]),
+      h("dd", {}, [typeof v === "object" ? v : String(v)]),
     ])),
   ], { scoped: false });
 }
 
 export async function render() {
   const sha = (currentPath().split("/").filter(Boolean)[1] || "").toLowerCase();
+  DOC_TITLE = `Sample ${mid(sha, 10, 6)}`;
   let d;
   try {
     d = await api(`/api/v1/samples/${encodeURIComponent(sha)}`);
   } catch (err) {
-    return emptyState("That is not a sample this sensor has a record of.", {
-      hint: "A sample id is a 64 character sha256.",
-    });
+    if (err && (err.status === 404 || err.status === 400)) {
+      return pageState({
+        iconName: "search-x",
+        title: "This sensor has no record of that sample.",
+        text: /^[0-9a-f]{64}$/.test(sha)
+          ? "No session on record moved a file with this SHA-256. Its page on VirusTotal "
+            + "may still exist if someone else submitted it."
+          : "A sample is identified by its SHA-256: 64 hexadecimal characters.",
+        actions: [routeLink("/payloads", "Back to malware", "action")],
+      });
+    }
+    return errorState(err);
   }
 
   const vt = (d.intel || []).find((r) => r.source === "virustotal");
@@ -81,8 +94,8 @@ export async function render() {
     ["size", d.present ? bytes(d.size_bytes) : "not held locally"],
     ["type", d.kind],
     ["entropy", d.trivial ? null : d.entropy],
-    ["vt standing", vt ? vt.verdict : "not looked up"],
-    ["vt detections", total ? `${detected} of ${total}` : null],
+    ["VirusTotal standing", vt ? vt.verdict : "not looked up yet"],
+    ["VirusTotal detections", total ? `${detected} of ${total} engines` : null],
     ["family", d.family
       ? h("span", {}, [
           h("b", { text: d.family.family }),
@@ -97,20 +110,19 @@ export async function render() {
 
   return h("div", {}, [
     h("div", { class: "pagehead" }, [
-      breadcrumbs(),
-      h("p", {}, [routeLink("/payloads", "back to malware", "")]),
+      breadcrumbs() || backLink("/payloads", "Malware"),
       h("div", { class: "enthead" }, [
         h("h1", { text: sha }),
         copyBtn(sha),
         exportControl("sample", sha),
       ]),
-      h("p", {}, [vtLink(sha, "open the VirusTotal report")]),
+      h("p", {}, [vtLink(sha, "Open the VirusTotal report")]),
     ]),
 
     panel("Identification", null, [
       h("dl", { class: "facts" }, facts.flatMap(([k, v]) => [
         h("dt", { text: k }),
-        h("dd", { class: "mono" }, [typeof v === "object" ? v : String(v)]),
+        h("dd", {}, [typeof v === "object" ? v : String(v)]),
       ])),
       d.note ? takeaway([d.trivial ? d.note : { b: d.note }]) : null,
     ], { scoped: false }),
@@ -121,8 +133,8 @@ export async function render() {
 
     panel("Where it was seen", "Every session that moved this file.", [
       table(
-        [{ label: "when" }, { label: "session" }, { label: "source" },
-         { label: "dir" }, { label: "origin" }],
+        [{ label: "When" }, { label: "Session" }, { label: "Source" },
+         { label: "Direction" }, { label: "Origin" }],
         d.sightings || [],
         (r) => [
           dayLink(r.ts),

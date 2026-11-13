@@ -1,65 +1,83 @@
-/* tokens.css v4 - one place for every colour, size and space in the site.
+/* tokens.css v5 - every colour, size and space in the site, and nothing else.
  *
- * Two themes. Both escalation ramps were measured against WCAG 2.1 rather
- * than eyeballed, and neither is a filter inversion of the other.
+ * DESIGN.md at the repository root is the brief these tokens implement. Read
+ * it before adding a token: most "new" values are an existing step used in a
+ * new place.
  *
- * LIGHT ramp, against canvas #F5F7F6 / surface #FFFFFF:
- *   stage-0 #64757C   4.46 / 4.80
+ * Three rules the tokens encode.
+ *
+ * 1. One accent. --accent is the only colour that means "you can act on
+ *    this": links, focus, the pressed state of a control, the primary button.
+ *    Bars, lines and other non-stage data marks are ink, not accent, so a
+ *    blue thing on the page is always something to click.
+ *
+ * 2. Stage colours are data, not decoration. The five-step escalation ramp
+ *    appears only where a value is a stage. v4 drew stage 2 in the accent
+ *    blue, so a stage chip and a link were the same colour; stage 2 is now a
+ *    deep teal that reads as a darker step of stage 1, with the hollow/filled
+ *    rule (stages 0-1 outlined, 2-4 filled) separating the two.
+ *
+ * 3. One radius, one spacing scale, one type scale. Anything that is not a
+ *    step below is a bug.
+ *
+ * LIGHT ramp against canvas #F5F7F6 / surface #FFFFFF (WCAG 2.1):
+ *   stage-0 #5E6E75   4.92 / 5.30
  *   stage-1 #1D6A66   5.90 / 6.35
- *   stage-2 #1A4B8C   8.04 / 8.65
+ *   stage-2 #0D4A46   9.36 / 10.07
  *   stage-3 #8A5D00   5.35 / 5.76
  *   stage-4 #A6192E   6.97 / 7.50
- *   adjacent pair separation: 1.32  1.36  1.50  1.30
+ *   accent  #1E4E9C   7.44 / 8.00  (white text on it: 8.00)
  *
- * DARK ramp, against canvas #0B1419 / surface #101E27:
+ * DARK ramp against canvas #0B1419 / surface #101E27:
  *   stage-0 #7B8D96   5.40 / 4.93
  *   stage-1 #35C0B2   8.27 / 7.55
- *   stage-2 #5C9BE0   6.40 / 5.84
+ *   stage-2 #2A9D91   5.61 / 5.12
  *   stage-3 #E8B44F   9.81 / 8.95
  *   stage-4 #EE6F86   6.43 / 5.86
- *   adjacent pair separation: 1.53  1.29  1.53  1.53
+ *   accent  #6BA5E7   7.23 / 6.60  (canvas text on it: 7.23)
  *
- * Adjacent steps separate by hue far more than by lightness in both themes,
- * so the rule that held for v3 still holds: nothing may rely on colour alone.
- * Stage chips carry a numeral and a word, map points vary fill and outline,
- * and every legend spells the stage out.
- *
- * One deliberate difference between themes. In light mode no stage fill can
- * carry white text at 4.5:1, so counts always sit outside a bar. In dark mode
- * ink text (#0B1419) clears 4.5:1 on all five fills, so a count may sit
- * inside one. The components still keep counts outside for consistency.
+ * Adjacent stages separate by hue or by fill state as much as by lightness,
+ * so nothing may rely on colour alone: stage chips carry a numeral and a
+ * word, map points vary fill and outline, and every legend spells it out.
  */
 
 @font-face {
-  font-family: "Public Sans";
-  src: url("../fonts/PublicSans[wght].ttf") format("truetype-variations");
-  font-weight: 300 800; font-display: swap;
+  font-family: "IBM Plex Sans";
+  src: url("../fonts/IBMPlexSans-Latin-Var.woff2") format("woff2-variations"),
+       url("../fonts/IBMPlexSans-Latin-Var.woff2") format("woff2");
+  font-weight: 100 700; font-style: normal; font-display: swap;
 }
 @font-face {
   font-family: "IBM Plex Mono";
-  src: url("../fonts/IBMPlexMono-Regular.ttf") format("truetype");
+  src: url("../fonts/IBMPlexMono-Latin-400.woff2") format("woff2");
   font-weight: 400; font-display: swap;
 }
 @font-face {
   font-family: "IBM Plex Mono";
-  src: url("../fonts/IBMPlexMono-Medium.ttf") format("truetype");
+  src: url("../fonts/IBMPlexMono-Latin-500.woff2") format("woff2");
   font-weight: 500 700; font-display: swap;
 }
 
 :root {
-  /* ---- type scale. Seven steps, no clamps, no vw units. ---- */
-  --fs-11: 11px;   /* eyebrows, column heads, legends */
-  --fs-12: 12px;   /* secondary lines under a value */
+  /* ---- type. Six steps. Sans for our words, mono only for indicators:
+     addresses, hashes, credentials, commands, anything an attacker typed. */
+  --fs-12: 12px;   /* labels, column heads, captions */
   --fs-13: 13px;   /* table body, dense UI */
   --fs-15: 15px;   /* prose */
-  --fs-18: 18px;   /* panel headings */
-  --fs-24: 24px;   /* page headings, stat values */
-  --fs-34: 34px;   /* the one number a page is about */
+  --fs-18: 18px;   /* section headings */
+  --fs-24: 24px;   /* page headings, figures */
+  --fs-36: 36px;   /* the one number a page is about */
 
-  --lh-tight: 1.25;
+  --lh-tight: 1.2;
+  --lh-ui: 1.4;
   --lh-body: 1.55;
 
-  /* ---- space. Four point grid, six steps. ---- */
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+
+  /* ---- space. Four point grid. ---- */
+  --s0: 2px;
   --s1: 4px;
   --s2: 8px;
   --s3: 12px;
@@ -69,22 +87,21 @@
   --s7: 48px;
 
   /* ---- structure ---- */
-  --radius: 2px;
-  --radius-lg: 3px;
-  --rail-w: 180px;
-  --topbar-h: 52px;
-  --classbar-h: 22px;
+  --radius: 4px;              /* the only corner radius; dots are circles */
+  --rail-w: 200px;
+  --topbar-h: 56px;
   --maxw: 1440px;
-  --gutter: 20px;
-  --measure: 72ch;
-  --row-h: 30px;              /* compact table row */
+  --gutter: var(--s5);
+  --measure: 70ch;
+  --control-h: 32px;
 
-  --font-body: 'Public Sans', 'Segoe UI', system-ui, sans-serif;
-  --font-display: 'Public Sans', 'Segoe UI', system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', 'Consolas', ui-monospace, monospace;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "Consolas", ui-monospace, monospace;
 
   --ring: 2px;                /* focus ring width */
   --t-fast: 120ms;
+  --t-reveal: 520ms;
+  --ease-out: cubic-bezier(.2, .7, .2, 1);
 }
 
 /* ------------------------------------------------------------------ light */
@@ -94,47 +111,49 @@
 
   --canvas:       #F5F7F6;
   --surface:      #FFFFFF;
-  --surface-sunk: #EBEFED;
-  --surface-rail: #0D1B26;
+  --surface-sunk: #ECF0EE;
 
-  --ink:      #0D1B26;
-  --ink-soft: #33454F;
-  --ink-dim:  #5C6B70;
+  --ink:      #0F1A20;
+  --ink-soft: #36454D;
+  --ink-dim:  #5A686E;
 
-  --line:        #D3DBD8;
-  --line-strong: #A6B4AE;
-  --track:       #E1E7E4;
+  --line:        #D6DDDA;
+  --line-strong: #A9B5B0;
+  --track:       #E3E8E6;
 
-  --accent:      #1A4B8C;
-  --accent-deep: #123763;
-  --accent-tint: #E3EBF5;
-  --accent-line: #C3D5EC;
-  --accent-rail: #7FA8DC;     /* accent readable on the dark rail */
+  /* the data mark that is not a stage: bars, the volume line */
+  --mark:      #36454D;
+  --mark-tint: #E3E8E6;
+
+  --accent:      #1E4E9C;
+  --accent-deep: #163B77;
+  --accent-tint: #E5ECF7;
+  --on-accent:   #FFFFFF;
 
   --alert:      #A6192E;
-  --alert-tint: #F6E4E7;
+  --alert-tint: #F7E6E9;
   --alert-line: #E3C2C8;
   --warn:       #8A5D00;
-  --warn-tint:  #F5ECD9;
+  --warn-tint:  #F6EDDA;
   --warn-line:  #E6D5AE;
   --ok:         #1F6B4A;
   --ok-tint:    #E7F3ED;
   --ok-line:    #BEDCCC;
 
-  --stage-0: #64757C;
+  --stage-0: #5E6E75;
   --stage-1: #1D6A66;
-  --stage-2: #1A4B8C;
+  --stage-2: #0D4A46;
   --stage-3: #8A5D00;
   --stage-4: #A6192E;
 
-  --map-ocean: #F7F9F8;
-  --map-land:  #CFD9D4;
-  --map-edge:  #A6B4AE;
-  --map-grat:  #E1E7E4;
+  --map-ocean: #F8FAF9;
+  --map-land:  #D3DCD8;
+  --map-edge:  #A9B5B0;
+  --map-grat:  #E3E8E6;
 
-  --shadow-pop: 0 10px 30px rgba(13, 27, 38, .16);
-  --focus:      #1A4B8C;
-  --focus-halo: #FFFFFF;
+  --shadow-pop: 0 8px 24px rgba(15, 26, 32, .14);
+  --scrim:      rgba(15, 26, 32, .45);
+  --focus:      #1E4E9C;
 }
 
 /* ------------------------------------------------------------------- dark */
@@ -144,22 +163,23 @@
 
   --canvas:       #0B1419;
   --surface:      #101E27;
-  --surface-sunk: #0E1A22;
-  --surface-rail: #070F13;
+  --surface-sunk: #0D1920;
 
   --ink:      #E8EEF1;        /* 14.5 on surface */
   --ink-soft: #B4C2CA;        /*  9.3 on surface */
   --ink-dim:  #8496A0;        /*  5.5 on surface */
 
   --line:        #22323C;
-  --line-strong: #35474F;
+  --line-strong: #3A4C55;
   --track:       #1A2A33;
+
+  --mark:      #B4C2CA;
+  --mark-tint: #1A2A33;
 
   --accent:      #6BA5E7;
   --accent-deep: #9AC2F0;
   --accent-tint: #16293A;
-  --accent-line: #29455F;
-  --accent-rail: #7FA8DC;
+  --on-accent:   #0B1419;
 
   --alert:      #EE6F86;
   --alert-tint: #2A1620;
@@ -167,13 +187,13 @@
   --warn:       #E8B44F;
   --warn-tint:  #2A2214;
   --warn-line:  #4A3A1C;
-  --ok:         #35C0B2;
-  --ok-tint:    #102A29;
-  --ok-line:    #1E4642;
+  --ok:         #4CC79A;
+  --ok-tint:    #102A22;
+  --ok-line:    #1E4638;
 
   --stage-0: #7B8D96;
   --stage-1: #35C0B2;
-  --stage-2: #5C9BE0;
+  --stage-2: #2A9D91;
   --stage-3: #E8B44F;
   --stage-4: #EE6F86;
 
@@ -182,12 +202,12 @@
   --map-edge:  #33454F;
   --map-grat:  #16242C;
 
-  --shadow-pop: 0 10px 30px rgba(0, 0, 0, .55);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, .5);
+  --scrim:      rgba(0, 0, 0, .6);
   --focus:      #8FBDF2;
-  --focus-halo: #0B1419;
 }
 
-/* Executive mode collapses five stages to two, separated by lightness as
+/* Summary mode collapses five stages to two, separated by lightness as
    well as hue so it survives greyscale printing and colour blindness. */
 body[data-mode="exec"] {
   --stage-0: var(--ink-dim);
@@ -195,38 +215,4 @@ body[data-mode="exec"] {
   --stage-2: var(--alert);
   --stage-3: var(--alert);
   --stage-4: var(--alert);
-}
-
-/* ---- compatibility aliases ----------------------------------------------
-   v3 names, kept so any rule or module not touched by this pass still
-   resolves. --bad, --warn, --sub2 and --bg were referenced by v3 and never
-   declared; they are real tokens now rather than hardcoded fallbacks. */
-:root {
-  --paper:        var(--canvas);
-  --paper-raised: var(--surface);
-  --fill:         var(--surface-sunk);
-  --slate:        var(--ink-dim);
-  --sub2:         var(--ink-dim);
-  --bg:           var(--surface);
-  --bad:          var(--alert);
-  --signal:       var(--alert);
-  --signal-tint:  var(--alert-tint);
-  --caution:      var(--warn);
-  --caution-tint: var(--warn-tint);
-  --good:         var(--ok);
-  --federal:      var(--accent);
-  --federal-deep: var(--accent-deep);
-  --federal-tint: var(--accent-tint);
-  --ocean:        var(--map-ocean);
-  --land:         var(--map-land);
-  --land-edge:    var(--map-edge);
-  --graticule:    var(--map-grat);
-  --fs-body:      var(--fs-15);
-  --fs-small:     var(--fs-13);
-  --fs-eyebrow:   var(--fs-11);
-  --fs-h1:        var(--fs-24);
-  --fs-h2:        var(--fs-18);
-  --gap:          var(--s4);
-  --gap-lg:       var(--s5);
-  --pad:          var(--s4);
 }

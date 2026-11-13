@@ -79,9 +79,9 @@ export async function render() {
   const sent = Number(cs.contributed_window || 0);
 
   const steps = [
-    { label: "captured", value: captured, color: "--stage-3" },
-    { label: "identified", value: flagged, color: "--stage-4" },
-    { label: "contributed", value: sent, color: "--ok" },
+    { label: "Captured", value: captured, color: "--stage-3" },
+    { label: "Identified", value: flagged, color: "--stage-4" },
+    { label: "Contributed", value: sent, color: "--ok" },
   ];
 
   return h("div", {}, [
@@ -118,8 +118,8 @@ export async function render() {
       + "tokens are dropped and the best-supported name is kept. This follows vendor naming, "
       + "so it says what engines call a sample, not who wrote it.",
       [table(
-        [{ label: "family" }, { label: "samples", num: true },
-         { label: "transfers", num: true }, { label: "basis" }, { label: "last seen" }],
+        [{ label: "Family" }, { label: "Samples", num: true },
+         { label: "Transfers", num: true }, { label: "Basis" }, { label: "Last seen" }],
         (d.families && d.families.families) || [],
         (r) => [
           h("b", { text: r.family }),
@@ -138,10 +138,10 @@ export async function render() {
 
     panel("Transfers", "One row per hash and source URL.",
       [table(
-        [{ label: "verdict" }, { label: "family" }, { label: "dir" },
-         { label: "sha256" }, { label: "source url", cls: "trunc" },
-         { label: "hits", num: true }, { label: "ips", num: true },
-         { label: "last seen" }],
+        [{ label: "Verdict" }, { label: "Family" }, { label: "Direction" },
+         { label: "SHA-256" }, { label: "Source URL", cls: "trunc" },
+         { label: "Hits", num: true }, { label: "Addresses", num: true },
+         { label: "Last seen" }],
         list,
         (r) => [
           verdictTag(r.verdict),
@@ -173,9 +173,9 @@ export async function render() {
           ].flat())
         : null,
        table(
-        [{ label: "sample" }, { label: "family" }, { label: "published to" },
-         { label: "attribution" }, { label: "detections" }, { label: "capture" },
-         { label: "contributed" }],
+        [{ label: "Sample" }, { label: "Family" }, { label: "Published to" },
+         { label: "Attribution" }, { label: "Detections" }, { label: "Capture" },
+         { label: "Contributed" }],
         items,
         (r) => [
           [entity("sample", r.sha256, mid(r.sha256, 12, 6)),
@@ -192,14 +192,17 @@ export async function render() {
             : h("span", { class: "sub2", text: "capture record not kept" }),
           dayLink(r.first_contributed),
         ],
-        "Nothing contributed yet. Every captured file was already known upstream.")]),
+        // All time already, so there is no wider window to offer.
+        emptyState("Nothing contributed yet.", {
+          hint: "Every file this sensor captured was already known to VirusTotal and MalwareBazaar.",
+        }))]),
 
     panel("Distribution hosts",
       "A host that also appears as an attacker is serving stagers from the same box it "
       + "scans with.",
       [table(
-        [{ label: "verdict" }, { label: "host" }, { label: "urls", num: true },
-         { label: "hits", num: true }, { label: "also scanning" }],
+        [{ label: "Verdict" }, { label: "Host" }, { label: "URLs", num: true },
+         { label: "Hits", num: true }, { label: "Also scanning" }],
         (d.hosts && d.hosts.hosts) || [],
         (r) => [
           verdictTag(r.verdict),

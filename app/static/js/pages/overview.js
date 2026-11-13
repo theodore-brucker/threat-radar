@@ -1,14 +1,16 @@
-/* pages/overview.js v4 - two audiences, one dataset.
+/* pages/overview.js v5 - two audiences, one dataset.
  *
- * Executive mode answers three questions in order: is the sensor working, is
- * risk moving, and what should I take away. Analyst mode keeps the dense
- * original. The marketing-sized hero is gone: a tool opens with numbers, and
- * the framing sentence sits beside them rather than above the fold on its own.
+ * Summary mode answers three questions in order: how far do intruders get,
+ * is that moving, and what should I take away. The escalation funnel is the
+ * hero because it is the one thing this site is about; v4 opened with three
+ * number cards that restated the funnel's first rows, so they are folded into
+ * a line of trends under it. Analyst mode keeps the dense original.
  */
 
 import {
   api, h, num, panel, stats, table, shortDate, dur, state, isExec,
-  stageTag, ipLink, signalCard, takeaway, hbars, svg, emptyState,
+  stageTag, ipLink, trendLine, takeaway, hbars, svg, emptyState, icon, place,
+  routeLink, pageState,
 } from "../core.js";
 import { railFull, funnelExec, onStageChange } from "../rail.js";
 import { escalationMap, applyFilter } from "../map.js";
@@ -41,41 +43,62 @@ const GOAL_NAMES = {
 function personaNote(t) {
   const n = t && t.persona_note;
   if (!n || n.comparable) return null;
-  return h("div", { class: "persona-note" }, [
-    h("b", { text: "Not a like-for-like comparison. " }),
+  return h("p", { class: "persona-note" }, [
+    h("b", { text: "These changes are not like for like. " }),
     h("span", { text: n.reason }),
   ]);
 }
 
+/* Only a problem earns a banner. A healthy sensor is the normal state and the
+   rail footer already says so; v4 drew a "Sensor healthy" box on every visit. */
 function healthBanner(hl) {
-  const cls = hl.status === "fault" ? "fault" : hl.status === "warn" ? "warn" : "ok";
-  const title = hl.status === "fault" ? "Sensor fault"
-    : hl.status === "warn" ? "Data may be behind" : "Sensor healthy";
-  return h("div", { class: `banner ${cls}` }, [
+  // A lagging pull already raises the bar across the top of every page, so
+  // the overview only adds a banner for a fault, where it has more to say.
+  if (!hl || hl.status !== "fault") return null;
+  const fault = hl.status === "fault";
+  return h("div", { class: `banner ${fault ? "fault" : "warn"}`, role: "status" }, [
+    icon(fault ? "octagon-alert" : "triangle-alert", { size: 18 }),
     h("div", {}, [
-      h("b", { text: title }),
+      h("b", { text: fault ? "The sensor is not recording logins." : "Recent data may be behind." }),
       h("p", { text: hl.message }),
-      hl.status === "fault"
-        ? h("p", { text: `Last successful authentication: ${hl.last_auth_day || "never"}. `
-            + "Numbers below the first stage are frozen until this is fixed." })
+      fault
+        ? h("p", { text: `The last successful login was recorded on ${hl.last_auth_day || "no date on file"}. `
+            + "Every stage after the first is frozen until the sensor is fixed." })
         : null,
     ]),
   ]);
 }
 
 function pagehead(d) {
-  const span = d.first_day && d.last_day ? `${d.first_day} to ${d.last_day}` : "";
+  const span = d.first_day && d.last_day ? `, between ${d.first_day} and ${d.last_day}` : "";
   return h("div", { class: "pagehead" }, [
-    h("h2", { text: "What actually happens to a server left on the public internet." }),
+    h("h2", { text: "What happens to a server left open on the public internet" }),
     h("p", { text:
-      "A decoy machine, deliberately exposed, dressed up as a working server that is "
-      + "worth breaking into. Nothing real runs on it. Everything that touches it is uninvited, "
+      "This is a decoy SSH server, deliberately exposed and dressed up as a machine worth "
+      + "breaking into. Nothing real runs on it, so everything that connects is uninvited, "
       + "and every attempt is recorded." }),
     h("p", { class: "sub2", text:
-      `${num(d.events_total)} recorded attempts from ${num(d.sources_total)} separate machines `
-      + `in ${d.countries} countries, ${span}.` }),
+      `${num(d.events_total)} recorded events from ${num(d.sources_total)} addresses `
+      + `in ${num(d.countries)} countries${span}.` }),
   ]);
 }
+
+/* A fresh install with nothing ingested yet. Say what the page will show and
+   when, rather than drawing a funnel of zeroes and a map with no points. */
+function firstRun() {
+  return pageState({
+    iconName: "compass",
+    title: "No traffic has been recorded yet.",
+    text: "Figures appear here after the first log pull from the sensor is ingested, "
+      + "which normally happens within one pull cycle of the sensor going live. If it "
+      + "has been longer than that, the Method page lists what each part of the "
+      + "pipeline does.",
+    actions: [routeLink("/method", "Read how the pipeline works", "action")],
+  });
+}
+
+// The bars grow once per visit; switching windows or modes redraws them in place.
+let revealed = false;
 
 /* ---------------- executive ---------------- */
 
@@ -90,57 +113,41 @@ async function execView(d) {
 
   const topNet = (conc.top || [])[0] || {};
   const gotIn = odds.shell_sessions || 0;
+  const reveal = !revealed;
+  revealed = true;
 
   return h("div", {}, [
-    healthBanner(d.health || { status: "ok", message: "" }),
+    healthBanner(d.health),
     pagehead(head),
 
-    h("div", { class: "signals" }, [
-      signalCard({
-        label: "Attempts to break in",
-        value: num(t.connections && t.connections.current),
-        trend: t.connections,
-        note: "Every connection from a machine that was not invited.",
-      }),
-      signalCard({
-        label: "Got past the password",
-        value: num(t.authenticated && t.authenticated.current),
-        trend: t.authenticated,
-        note: "Guessed a working login on a decoy that accepts known-bad credentials.",
-      }),
-      signalCard({
-        label: "Left malware behind",
-        value: num(head.unique_samples),
-        trend: t.captured,
-        alarmOn: "up",
-        note: `${num(head.flagged_samples)} flagged by at least one VirusTotal engine or listed by URLhaus.`,
-      }),
-    ]),
+    panel("How far intruders get",
+      "Every connection to the sensor, and how many made it past each step.",
+      [funnelExec(d.rail, odds, { reveal }),
+       trendLine([
+         { label: "Connections", trend: t.connections },
+         { label: "Working logins", trend: t.authenticated },
+         { label: "Malware captured", trend: t.captured, alarmOn: "up" },
+       ]),
+       personaNote(t)]),
 
-    personaNote(t),
-
-    panel("How far intruders actually get",
-      "Every connection to this machine, and what fraction of them survives each step.",
-      [funnelExec(d.rail, odds)]),
-
-    panel("Where the pressure comes from",
-      "Hollow points stopped at the password prompt. Filled points got inside. "
-        + "Locations are where the infrastructure is hosted, not where its operators are.",
+    panel("Where the traffic comes from",
+      "Hollow points stopped at the password prompt and filled points got inside. A "
+        + "location is where the infrastructure is hosted, not where its operator is.",
       [mapNode,
        takeaway([
-         "Attack traffic is not evenly spread. ",
-         { b: `${conc.top_share_pct || 0}% of everything` },
-         " came from just ",
+         "Attack traffic is not evenly spread: ",
+         { b: `${conc.top_share_pct || 0}% of it` },
+         " came from ",
          { b: `${(conc.top || []).length} network operators` },
          topNet.org
            ? `, led by ${topNet.org}${topNet.country ? ` in ${topNet.country}` : ""} with `
-             + `${topNet.ips === 1 ? "a single machine" : `${num(topNet.ips)} machines`}.`
+             + `${topNet.ips === 1 ? "a single address" : `${num(topNet.ips)} addresses`}.`
            : ".",
        ])]),
 
     h("div", { class: "grid g2" }, [
-      panel("What they were trying to log into",
-        "Guessed usernames and passwords, grouped by what they were after.",
+      panel("What they tried to log into",
+        "Guessed usernames and passwords, grouped by the kind of account they suggest.",
         [goals.length
           ? hbars(goals.map((g) => ({
               label: GOAL_NAMES[g.tag] || g.tag,
@@ -151,47 +158,48 @@ async function execView(d) {
          goals.length ? takeaway([
            "The most common target was ",
            { b: (GOAL_NAMES[goals[0].tag] || goals[0].tag).toLowerCase() },
-           ", not system administration. Attackers go where the money is.",
+           ", which says more about what attackers hope to monetise than about the "
+             + "server they think they have found.",
          ]) : null]),
 
-      panel("Concentration of attack traffic",
-        "Share of all recorded attempts by network operator.",
+      panel("Who sends the most",
+        "Share of all recorded events by network operator.",
         [(conc.top || []).length
           ? hbars((conc.top || []).map((c) => ({
               label: c.org || c.asn,
-              title: `${c.asn} \u00b7 ${c.country || ""}`,
+              title: place(c.asn, c.country),
               value: c.events,
               display: `${c.share_pct}%`,
             })), { alarmFirst: true })
           : emptyState("No traffic recorded in this window.", { widen: true }),
          (conc.top || []).length ? takeaway([
-           "Blocking a small number of networks would remove most of this traffic. ",
-           "That is the practical takeaway for anyone running an exposed service.",
+           "For anyone running an exposed service, blocking a handful of networks would "
+             + "remove most of this traffic.",
          ]) : null]),
     ]),
 
-    panel("Attack volume over time",
+    panel("Volume over time",
       spikes.length
-        ? `${spikes.length} unusual surge${spikes.length > 1 ? "s" : ""} detected and explained.`
-        : "No unusual surge in this period.",
+        ? `${spikes.length} unusual surge${spikes.length > 1 ? "s" : ""} in this window, each marked on the chart.`
+        : "No day in this window broke its own baseline.",
       [activityChart(d.activity || [], (d.health && d.health.outages) || [],
                      (d.health && d.health.personas) || []),
        spikes.length
-         ? h("div", { style: "margin-top:12px" }, spikes.slice(-2).reverse().map((r) =>
-             h("p", { class: "sub2", style: "margin:0 0 6px" }, [
-               h("b", { text: `${r.day}: ` }), r.spike.headline])))
+         ? h("ul", { class: "spikes" }, spikes.slice(-2).reverse().map((r) =>
+             h("li", {}, [h("b", { text: `${r.day}: ` }), r.spike.headline])))
          : null,
        takeaway([
-         "Volume swings are usually one operator changing behaviour rather than a broad shift. ",
-         "The graph is annotated automatically when a day breaks its own baseline.",
+         "A swing in volume is usually one operator changing behaviour rather than a broad "
+           + "shift, and the chart marks any day that breaks its own baseline.",
        ])]),
 
-    panel("What this demonstrates", null, [
-      h("p", { class: "lede", style: "margin:0", text:
-        `Roughly ${num(gotIn)} of ${num(odds.connections || 0)} connection attempts reached a working shell. `
-        + "Cheap, automated pressure is constant, most of it fails against a password prompt, "
-        + "and the small fraction that succeeds moves immediately to installing something. "
-        + "Credential quality and exposure control are what separate the two outcomes." }),
+    panel("What this shows", null, [
+      h("p", { class: "lede", text:
+        `About ${num(gotIn)} of ${num(odds.connections || 0)} connections reached a working shell. `
+        + "Automated pressure on an exposed service is constant and cheap, most of it fails at "
+        + "the password prompt, and the small share that gets through moves straight to "
+        + "installing something. Credential quality and how much is exposed decide which side "
+        + "of that line a real server lands on." }),
     ]),
   ]);
 }
@@ -205,41 +213,42 @@ async function analystView(d) {
   onStageChange((s) => applyFilter(mapSvg, s));
 
   return h("div", {}, [
-    healthBanner(d.health || { status: "ok", message: "" }),
+    healthBanner(d.health),
     pagehead(head),
-    personaNote(d.trends || {}),
     stats([
-      { label: "events", value: num(head.events_total) },
-      { label: "unique sources", value: num(head.sources_total) },
-      { label: "last 24h", value: num(head.events_last_day), tone: "accent" },
-      { label: "samples captured", value: num(head.unique_samples) },
-      { label: "flagged malicious", value: num(head.flagged_samples), tone: "bad" },
-      { label: "submitted upstream", value: num(head.submitted_samples) },
+      { label: "Events", value: num(head.events_total) },
+      { label: "Unique sources", value: num(head.sources_total) },
+      { label: "Events in the last 24 hours", value: num(head.events_last_day) },
+      { label: "Samples captured", value: num(head.unique_samples) },
+      { label: "Flagged malicious", value: num(head.flagged_samples), tone: "bad" },
+      { label: "Submitted upstream", value: num(head.submitted_samples) },
     ]),
+    personaNote(d.trends || {}),
     panel("Escalation",
-      "Click a stage to filter the map and the tables below it.",
+      "Select a stage to filter the map and the table below it to sources that reached it.",
       [railFull(d.rail)]),
     panel("Where the escalation happens",
-      "One point per source, capped at 60, ranked by stage then volume. Locations "
-        + "are where the infrastructure is hosted, not where its operators are.",
+      "One point per source, at most 60, ranked by stage and then volume. A location is "
+        + "where the infrastructure is hosted, not where its operator is.",
       [mapNode]),
     panel("Daily volume",
-      spikes.length ? `${spikes.length} labelled surge(s).` : "No surge crossed the threshold.",
+      spikes.length
+        ? `${spikes.length} labelled surge${spikes.length > 1 ? "s" : ""}.`
+        : "No day crossed the surge threshold.",
       [activityChart(d.activity || [], (d.health && d.health.outages) || [],
                      (d.health && d.health.personas) || []),
-       spikes.length ? h("div", { style: "margin-top:12px" }, spikes.slice(-3).reverse().map((r) =>
-         h("p", { class: "sub2", style: "margin:0 0 6px" }, [
-           h("b", { class: "mono", text: `${r.day} ` }), r.spike.headline]))) : null]),
+       spikes.length ? h("ul", { class: "spikes" }, spikes.slice(-3).reverse().map((r) =>
+         h("li", {}, [h("b", { text: `${r.day}: ` }), r.spike.headline]))) : null]),
     panel("Sessions worth reading",
-      "Ranked by what the session did, capped at two per source.",
+      "Ranked by what the session did, at most two per source.",
       [table(
-        [{ label: "source" }, { label: "stage", sort: (r) => Number(r.stage || 0) },
-         { label: "user" }, { label: "cmds", num: true }, { label: "files", num: true },
-         { label: "tunnels", num: true }, { label: "held", num: true }, { label: "started" }],
+        [{ label: "Source" }, { label: "Stage", sort: (r) => Number(r.stage || 0) },
+         { label: "User" }, { label: "Commands", num: true }, { label: "Files", num: true },
+         { label: "Relays", num: true }, { label: "Held", num: true }, { label: "Started" }],
         d.notable,
         (r) => [
           [ipLink(r.src_ip),
-           h("div", { class: "sub2", text: [r.org, r.country].filter(Boolean).join(" \u00b7 ") })],
+           h("div", { class: "sub2", text: place(r.org, r.country) })],
           stageTag(r.stage),
           h("span", { class: "mono", text: r.username || "-" }),
           num(r.commands), num((r.downloads || 0) + (r.uploads || 0)), num(r.tunnels),
@@ -257,7 +266,11 @@ async function analystView(d) {
    rather than a property of the helpers. */
 
 function activityChart(rows, outages, personas) {
-  if (!rows.length) return emptyState("No activity recorded yet.", { widen: true });
+  if (!rows.length) {
+    return emptyState("No daily activity in this window.", {
+      hint: "The chart draws once the window holds at least one day of events.", widen: true,
+    });
+  }
   const W = 1100; const H = 150; const pad = 20;
   const max = Math.max(...rows.map((r) => r.events), 1);
   const step = (W - pad * 2) / Math.max(rows.length - 1, 1);
@@ -265,7 +278,7 @@ function activityChart(rows, outages, personas) {
   const y = (v) => H - pad - (v / max) * (H - pad * 2);
   const el = svg("svg", {
     viewBox: `0 0 ${W} ${H}`, class: "spark chart", role: "img",
-    "aria-label": `daily event volume, peak ${max}`,
+    "aria-label": `Daily event volume from ${rows[0].day} to ${rows[rows.length - 1].day}, peaking at ${num(max)}`,
   });
 
   const defs = svg("defs", {});
@@ -292,7 +305,7 @@ function activityChart(rows, outages, personas) {
       class: "gap", x: x1, y: 4, width: Math.max(2, x2 - x1), height: H - pad - 4,
     }));
     const lab = svg("text", { x: (x1 + x2) / 2, y: 14, "text-anchor": "middle" });
-    lab.textContent = "sensor fault";
+    lab.textContent = "Sensor fault";
     el.appendChild(lab);
   });
 
@@ -303,7 +316,7 @@ function activityChart(rows, outages, personas) {
     if (i === undefined) return;
     el.appendChild(svg("line", { class: "persona", x1: x(i), x2: x(i), y1: 4, y2: H - pad }));
     const t = svg("text", { class: "persona-label", x: x(i) + 3, y: H - pad - 4 });
-    t.textContent = `persona: ${p.name}`;
+    t.textContent = `Persona: ${p.name}`;
     el.appendChild(t);
   });
 
@@ -333,5 +346,6 @@ function activityChart(rows, outages, personas) {
 
 export async function render() {
   const d = await api(`/api/v1/overview${state.minStage ? `?min_stage=${state.minStage}` : ""}`);
+  if (!d.headline || !Number(d.headline.events_total)) return firstRun();
   return isExec() ? execView(d) : analystView(d);
 }
