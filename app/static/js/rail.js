@@ -1,9 +1,9 @@
-/* rail.js v5 - the funnel, two ways.
+/* rail.js - the escalation funnel, drawn two ways.
  *
- * Summary mode: proportional bars plus the odds restated in words. "1 in
- * 2,000 connections ends with malware" is the sentence someone repeats in a
- * meeting. Analyst mode: log scaled widths so the tail stays visible, and the
- * whole rail doubles as a stage filter.
+ * Summary mode: proportional bars, then the same figures as odds ("1 in 127
+ * connections ended with a file moved onto the machine"), which are easier to
+ * remember than percentages. Analyst mode: log-scaled widths so the small
+ * later stages stay visible, and each stage is a button that filters the page.
  */
 
 import { h, num, state, funnel, takeaway, STAGE_COLORS } from "./core.js";
@@ -33,7 +33,10 @@ export function funnelExec(rail, odds, { reveal = false } = {}) {
   const sampleLine = samples.length
     ? h("p", { class: "takeaway",
         text: `Those transfers left ${num(samples[0].count)} unique malware samples`
-          + (samples[1] ? `, and ${num(samples[1].count)} were new enough to share back to VirusTotal.` : ".") })
+          + (!samples[1] ? "."
+            : samples[1].count
+              ? `, and ${num(samples[1].count)} were new to VirusTotal, so this sensor uploaded them.`
+              : ", all of them already known to VirusTotal.") })
     : null;
 
   const oddsEl = h("div", { class: "odds" }, [
@@ -55,10 +58,10 @@ export function funnelExec(rail, odds, { reveal = false } = {}) {
     funnel(steps, { reveal }),
     oddsEl,
     takeaway([
-      "Almost everything that reaches an internet-facing machine is automated and stops at "
-        + "the password prompt. The risk is the ",
+      "Almost all of this traffic is automated and stops at the password prompt. The "
+        + "sessions to worry about are the ",
       { alarm: `${num(odds.transferred_sessions || 0)} connections` },
-      " that got far enough to put a file on disk.",
+      " that got far enough to put a file on the machine.",
     ]),
     sampleLine,
   ]);

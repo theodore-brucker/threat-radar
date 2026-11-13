@@ -7,7 +7,7 @@
 
 Design work needs realistic shapes: a funnel that narrows by orders of
 magnitude, a map with points on several continents, a month of daily volume
-with a surge in it. The test fixtures are deliberately tiny and hostile, so
+with a surge in it. The test fixtures are tiny and hostile, so
 they make every page look broken. This script makes a month of plausible
 traffic instead.
 

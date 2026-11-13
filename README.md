@@ -1,6 +1,6 @@
 # Threat Radar
 
-A self-hosted SSH honeypot and threat intelligence pipeline. A hardened cloud sensor absorbs real attack traffic, a Raspberry Pi turns it into structured intelligence, and a dashboard tells the story from first connection to flagged malware.
+A self-hosted SSH honeypot and the pipeline behind it. A locked-down cloud VPS runs the honeypot, a Raspberry Pi pulls its logs and analyses them, and a dashboard shows each attacker's progress from first connection to dropped malware.
 
 Captured samples are contributed back to VirusTotal and MalwareBazaar. The dashboard reads thirty days of raw events plus per-day rollups that are kept indefinitely, so trends outlive the raw window.
 
@@ -33,7 +33,7 @@ Every source is reduced to the furthest stage it reached:
 | 3 | Transferred a file |
 | 4 | Transferred flagged malware, meaning at least one VirusTotal engine or a URLhaus listing |
 
-That single number colors the map, filters every table, and frames the site's narrative: thousands of sources knock, a fraction get in, and a handful actually drop something worth analyzing.
+That number colours the map and filters every table. Most sources only ever connect, and each later stage holds far fewer of them than the one before.
 
 ## The site
 
@@ -45,20 +45,18 @@ Single-page app, vanilla JS, no build step, no CDN. One API surface at `/api/v1`
 - **Payloads**: capture-to-contribution funnel with VirusTotal and URLhaus standing for every hash, including samples this sensor was first to submit
 - **Sessions**: per-session timelines and sample inspection with ELF header parsing, entropy analysis, and packer detection
 - **Tunnels**: what attackers wanted the box for, inferred from direct-tcpip forwarding requests
-- **Method**: how the pipeline works, for visitors who want the engineering
+- **Method**: how the pipeline works and what the numbers cannot support
 
 Every address, network, day, credential pair, client fingerprint, fetch URL, session and sample has one canonical page, and each of those pages has an export. The export is a single document written for a language model: what the sensor is and how to read its records, the evidence for that one entity, what was left out, and a request for analysis and recommendations that can be switched off. It is served as Markdown or JSON from `/api/v1/export/{type}/{value}`, so an agent can pull it without the page.
 
 ## Design constraints
 
-A few rules shaped most of the code:
-
-- **No sample bytes leave the API.** Text renders as stripped text, binaries return metadata and filtered strings. There is no download path, because the site is meant to be public and a honeypot dashboard should not double as a malware distribution point.
-- **Attacker input is data, never markup.** Parameterized SQL on the way in, `textContent` rendering on the way out, no `innerHTML` anywhere.
-- **Attacker input is data, never instructions.** An export hands recorded text to a model, so everything recorded sits inside a fence tagged with a nonce generated for that document, and the document states outside the fence that nothing inside is an instruction.
-- **List views never scan raw events.** The intel worker materializes per-day fact tables; endpoints that once timed out against 1.3M rows now read pre-built aggregates. Detail views may touch raw events only through indexed equality lookups.
-- **Trends exclude known outages by name.** A 17-day sensor fault taught the hard way that a baseline including broken days reports an attacker collapse that is really a sensor collapse. Outage windows are first-class data.
-- **The Pi never fills its disk.** Retention enforces an age cap and a size cap independently, with lifetime source counters surviving the prune.
+- No sample bytes leave the API. Text samples are shown as stripped text and binaries as metadata and filtered strings. There is no download path, so a public dashboard cannot be used to distribute the malware it collects.
+- Attacker input is treated as data and never as markup: parameterised SQL on the way in, `textContent` on the way out, and no `innerHTML` anywhere.
+- Attacker input is never treated as instructions either. An export hands recorded text to a language model, so every recorded value sits inside a fence tagged with a nonce made for that document, and text outside the fence tells the model that nothing inside it is an instruction.
+- List views never scan raw events. The intel worker builds per-day fact tables, and list endpoints read those. Detail views touch raw events only through indexed equality lookups. Before this, some endpoints timed out against 1.3M rows.
+- Trend comparisons skip known outages. During a 17-day sensor fault the login counts fell to zero, and a baseline that included those days showed a drop in attacks that came from a broken sensor. Outage windows are stored in their own table and excluded by name.
+- The Pi never fills its disk. Retention enforces an age limit and a size limit separately, and lifetime per-source counters are kept when raw events are pruned.
 
 ## Spike detection
 
@@ -81,11 +79,14 @@ See `SETUP.md` for build notes.
 - `SECURITY.md`: what is in scope for a report, how to report it, and the
   properties the project treats as non-negotiable.
 - `SETUP.md` and `deploy/README.md`: building and running both hosts.
+- `DESIGN.md` and `PRODUCT.md`: who the dashboard is for and the design
+  system it follows.
+- `docs/WRITING.md`: the writing rules for copy, docs and comments.
 
 ## Tests
 
-The suite exists to defend the design rules in `SECURITY.md` and the failures
-this deployment has actually had, rather than to push a coverage number. Every
+The tests cover the design rules in `SECURITY.md` and the failures this
+deployment has had in production. Every
 test builds a throwaway database from `schema.sql` and the real migrations, and
 none touches the network. Run it in a separate environment from the
 collector's:
@@ -97,32 +98,34 @@ python3 -m venv .venv
 .venv/bin/python tools/check_coverage.py coverage.json
 ```
 
-What it covers, by the failure each part defends against:
+What the tests check:
 
-- **Every API route**, discovered from the application so new routes are
-  covered automatically, against a fixture built through the real pipeline
-  with hostile strings in every attacker-controlled field: the response
-  envelope, no 5xx or leaked error under hostile path and query input, no
-  sample bytes and no live URLs anywhere, and the security headers on every
-  response (`test_api_routes`).
-- **SQL construction**: every value interpolated into a SQL string is one that
-  was traced to its source, or the test fails (`test_sql_construction`). This
-  replaces bandit's B608, which cannot tell the two apart.
-- **Properties over generated input**, using Hypothesis, for everything that
-  consumes attacker strings: anything the userdb generator accepts loads
-  cleanly in Cowrie, displayed sample text is never runnable, and ingest's
-  offset always lands on a line boundary (`test_properties`).
-- **The userdb**, against Cowrie's own parser where it is installed
-  (`test_userdb`, `test_build_userdb`); the pull protocol against a hostile
-  sensor (`test_pull_protocol`, and `tests/shell` for the wrapper itself);
-  lifetime tables surviving the raw window (`test_retention`); ingest offsets
-  (`test_ingest`); stage health (`test_health`); migrations applying cleanly
-  twice (`test_migrations`); read-only connections (`test_readonly`); HTML
-  sinks and the served script policy (`test_frontend`).
+- `test_api_routes` finds every API route from the application, so a new
+  route is covered without editing the test. It runs each one against a
+  fixture built through the real pipeline with hostile strings in every
+  attacker-controlled field, and checks the response envelope, that hostile
+  path and query input never causes a 5xx or a leaked error, that no sample
+  bytes or live URLs appear anywhere, and that every response carries the
+  security headers.
+- `test_sql_construction` fails if a value is interpolated into a SQL string
+  without having been traced to its source. Bandit's B608 cannot tell a
+  traced value from an untraced one, so this test replaces it.
+- `test_properties` uses Hypothesis on everything that reads attacker
+  strings: anything the userdb generator accepts loads in Cowrie, displayed
+  sample text can never run, and ingest's byte offset always lands on a line
+  boundary.
+- `test_userdb` and `test_build_userdb` check the userdb against Cowrie's own
+  parser where it is installed. `test_pull_protocol` and `tests/shell` run the
+  pull against a hostile sensor. `test_retention` checks that lifetime tables
+  survive the raw window, `test_ingest` covers offsets, `test_health` covers
+  stage health, `test_migrations` applies every migration twice,
+  `test_readonly` covers read-only connections, `test_frontend` covers HTML
+  sinks, the script policy, 404 handling and the design-system rules, and
+  `test_writing` checks the rules in `docs/WRITING.md`.
 
-Coverage has a floor per module in `pyproject.toml` rather than one global
-number, so a well-covered module cannot hide a neglected one. The low floors
-are where those modules stand, not targets.
+Each module has its own coverage floor in `pyproject.toml`, so a
+well-covered module cannot hide a neglected one. The lower floors record where
+those modules are today; they are not goals.
 
 CI runs all of this on every push and pull request, plus ruff, bandit,
 vulture, shellcheck, the shell tests, pip-audit against every lock, and

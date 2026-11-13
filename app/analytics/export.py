@@ -6,7 +6,7 @@ self-contained document: what the sensor is, how to read its records, the
 evidence, and optionally a request for analysis. The intended reader is an
 agent reviewing the activity and recommending what to do about it.
 
-Three rules, on top of the ones the rest of the site keeps:
+Rules for exports, in addition to the ones the rest of the site keeps:
 
   1. An export shows nothing the pages do not. It is assembled from the same
      reads as the entity, session and sample endpoints, so sample text is
@@ -139,7 +139,7 @@ BRIEF = [
     "known campaign or tooling this matches. Give your confidence and the "
     "specific evidence behind it.",
     "3. Classification check: do the recorded stage and any malware label "
-    "hold up against the files and commands actually present? Name anything "
+    "hold up against the files and commands present? Name anything "
     "that looks mislabelled.",
     "4. Indicators: the durable ones worth keeping, such as keys, hashes, "
     "URLs, credential pairs and tool fingerprints, listed apart from "

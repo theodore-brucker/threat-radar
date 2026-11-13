@@ -1,9 +1,8 @@
-/* components.css v5
+/* components.css
    Every class emitted by a JS module has a rule here, and every value is a
-   token. The biggest change from v4: a section is no longer a bordered card.
-   Sections are separated by space and a heading; only data surfaces (tables,
-   the map, charts, the escalation rail, code) sit on a surface with an edge.
-   That gives the numbers room and makes the bordered things mean "data". */
+   token. Sections are separated by space and a heading, with no border. Only
+   data surfaces (tables, the map, charts, the escalation rail, code) sit on a
+   surface with an edge, so a border on this site always surrounds data. */
 
 /* ---------- page furniture ---------- */
 
@@ -134,7 +133,7 @@
 .tbl-bar button { min-height: 28px; font-size: var(--fs-12); padding: 0 var(--s2); }
 /* The wrapper must NOT be a scroll container by default: overflow-x:auto makes
    it the scrollport, and the sticky header then sticks inside it instead of
-   under the topbar. Tables that genuinely do not fit get the scrolls class
+   under the topbar. Tables wider than the page get the scrolls class
    from fitTables(), and there the header goes back to static. */
 .tbl-wrap {
   overflow: visible; background: var(--surface);

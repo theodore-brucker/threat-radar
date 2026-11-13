@@ -1,4 +1,4 @@
-/* pages/sessions.js - the sessions that actually produced something.
+/* pages/sessions.js - the sessions that produced something.
    Roughly one in two thousand connections moves a file; those are the ones
    worth reading end to end. */
 
@@ -46,7 +46,7 @@ export async function render() {
         { b: `${num(inbound)} inbound files` },
         sharedHashes
           ? [". ", { alarm: `${sharedHashes} samples arrived from more than one source` },
-             ", which points at shared tooling rather than unrelated actors."]
+             ", which suggests those sources share tooling."]
           : ".",
       ].flat()),
       table(

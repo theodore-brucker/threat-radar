@@ -1,6 +1,6 @@
-"""Session narratives and sample inspection.
+"""Session timelines and sample inspection.
 
-Two rules govern this module, because the site is intended to go public:
+Rules for this module, which serves a public site:
 
   1. No endpoint returns sample bytes. Text samples are returned as decoded
      text with control characters stripped and with URLs and IPv4 addresses
@@ -130,7 +130,7 @@ def sessions_with_files(con, days=30, limit=200):
 # session timeline
 # ---------------------------------------------------------------------------
 
-# What each event contributes to the narrative. Anything not listed is dropped
+# The label and detail each event adds to the timeline. Anything not listed is dropped
 # rather than rendered as raw JSON.
 def _summarize(eventid, payload):
     g = lambda k, d=None: _jget(payload, k, d)
@@ -345,7 +345,7 @@ def _sample_file(shasum):
 def sample_brief(con, shasum, text_bytes=4096):
     """What a sample is, in a few fields, for a document that mentions several.
 
-    The same two rules as sample_detail: never bytes, and text only decoded
+    The same rules as sample_detail: never bytes, and text only decoded
     and defanged. It skips entropy, packing and strings, which cost a pass
     over the file each and belong on the sample's own page.
     """
@@ -488,7 +488,7 @@ def sample_detail(con, shasum):
         "entropy": _entropy(body[:65536]),
     })
     # High entropy on a binary means packed or encrypted, which is worth
-    # stating plainly rather than leaving as a number.
+    # stating in words rather than leaving as a number.
     if not is_text and out["entropy"] >= 7.2:
         out["note"] = "high entropy, consistent with packing or encryption"
 

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-build_userdb.py - generate etc/userdb.txt from credentials this sensor has
-actually been offered, instead of guessing.
+build_userdb.py - generate etc/userdb.txt from credentials attackers have
+offered this sensor, instead of a guessed list.
 
 Rationale: Cowrie's shipped userdb.example ends with '*:x:*' (any user, any
 password). With no etc/userdb.txt that fallback is active, which is why login
 success sits near 100%. A single probe with a random credential identifies the
 honeypot. A hand-written list fixes that but discards most capture volume.
-Allowing the top-N pairs this sensor has really seen keeps the volume and still
+Allowing the top-N pairs this sensor has seen keeps the volume and still
 rejects anything novel.
 
 Every candidate is checked before anything is written, and the rules come from

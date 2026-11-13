@@ -1,9 +1,8 @@
 /* boot.js - the entry point.
  *
- * v3 carried this as an inline <script> in index.html, which meant the page
- * could not be served with a script-src that excludes 'unsafe-inline'. It is
- * a module now so the CSP can be strict. The only inline script left is the
- * pre-paint theme resolver, which the server pins by hash.
+ * A module, so the content security policy can exclude 'unsafe-inline'. The
+ * only inline script in the page is the pre-paint theme resolver, which the
+ * server allows by hash.
  */
 
 import { wireShell, render, url, h, icon } from "./core.js";

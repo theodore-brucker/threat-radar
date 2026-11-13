@@ -1,11 +1,9 @@
-/* pages/sources.js v4 - who is hitting the sensor, ranked by escalation and
-   by abuse score rather than by raw event count.
+/* pages/sources.js - who is hitting the sensor, ranked by how far they got
+   and then by volume.
 
-   Two changes from v3. The stage filter no longer calls location.reload(),
-   which threw away the whole page and every cached response to change one
-   query parameter. And the basis for a category is printed on the row instead
-   of the words "basis on hover", which was unreachable on touch and read as
-   the design admitting it had nowhere to put the reason. */
+   The stage filter re-renders the page from cached responses instead of
+   reloading it. The reason for each network's category is printed on its
+   row, because a hover tooltip cannot be read on a touch screen. */
 
 import {
   api, h, num, pct, panel, table, stats, state, stageTag, bar, tag, mid,
@@ -42,11 +40,9 @@ export async function render() {
     ]),
 
     panel("Networks by what their traffic did",
-      "Ranked by how far this network's traffic got, then by how much of it there was. "
-      + "Those are separate measurements rather than one blended score, because a loud "
-      + "scanner and a quiet intruder are different problems and a single number cannot "
-      + "say which you are looking at. The category describes observed behaviour, not "
-      + "who operates the network.",
+      "Ranked first by how far this network's traffic got, then by how much of it there "
+      + "was, so a network that got a shell ranks above a louder one that never logged "
+      + "in. The category describes what the traffic did, not who runs the network.",
       [table(
         [{ label: "Reached", sort: (r) => Number(r.depth || 0) },
          { label: "Network" }, { label: "Category" },

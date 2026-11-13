@@ -6,10 +6,9 @@
    where every value is itself a link. Every value originated with an attacker
    and reaches the DOM through textContent only.
 
-   v3 dropped a panel entirely when its related list was empty, so two
-   addresses produced pages of different shapes and a reader could not tell
-   "nothing recorded" from "this page does not show that". Every panel is
-   always present now and says which of the two it is. */
+   Every panel is drawn even when its list is empty, and the empty state says
+   so, so two entity pages of the same type always have the same sections and
+   a reader can tell "nothing recorded" from "this page does not show that". */
 
 import {
   api, h, num, panel, table, tag, mid, dur, entity, ipLink, dayLink, copyBtn,

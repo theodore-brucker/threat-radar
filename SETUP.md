@@ -1,8 +1,9 @@
 # Threat Radar Setup Runbook
 
-Two machines. The **VPS** is the disposable internet-facing sensor (Cowrie). The
-**Pi** is the trusted analytics box (ingest, enrich, dashboard). They talk over a
-Tailscale tailnet; nothing from the internet ever reaches the Pi.
+There are two machines. The VPS is the internet-facing sensor (Cowrie) and can be
+rebuilt at any time. The Pi is the trusted analytics host (ingest, enrichment,
+dashboard). They connect over a Tailscale tailnet, and no traffic from the
+internet reaches the Pi.
 
 ```
   Internet ──▶ VPS :22  (Cowrie honeypot)
@@ -14,15 +15,15 @@ Tailscale tailnet; nothing from the internet ever reaches the Pi.
   Pi ─▶ ingest ─▶ SQLite ─▶ enrich (GeoLite2) ─▶ FastAPI dashboard
 ```
 
-Work top to bottom. Each fenced block is copy-paste as-is unless it says to edit a value.
+Work from top to bottom. Each code block can be pasted as it is unless it says to edit a value.
 
 ---
 
 ## PART A: VPS sensor
 
 Provision the box first (Oracle Cloud Always Free ARM, or a ~$4/mo Hetzner CX22).
-Ubuntu 24.04. When creating it, in the provider's firewall/security-list **allow
-inbound TCP 22 from anywhere** and nothing else. You'll do host firewalling too.
+Use Ubuntu 24.04. In the provider's firewall or security list, allow inbound TCP 22
+from anywhere and nothing else. The host gets its own firewall in step A4.
 
 SSH in as your sudo user, then:
 
@@ -41,8 +42,9 @@ tailscale ip -4          # note this VPS tailnet IP, e.g. 100.x.y.z
 
 ### A2. Move your real SSH off port 22 (Cowrie takes 22)
 
-Real admin login will be Tailscale SSH over the tailnet. Move the OpenSSH daemon
-to 2200 and bind it to the tailnet only, so port 22 to the world is 100% honeypot.
+Admin logins go over Tailscale SSH. Move the OpenSSH daemon to port 2200 and bind
+it to the tailnet address only, so everything reaching port 22 from the internet
+lands in the honeypot.
 
 ```bash
 TS_IP=$(tailscale ip -4)
@@ -55,8 +57,8 @@ EOF
 sudo systemctl restart ssh
 ```
 
-Confirm from a second terminal that `ssh -p 2200 user@${TS_IP}` (or `tailscale ssh`)
-works **before closing this session**.
+Before closing this session, confirm from a second terminal that
+`ssh -p 2200 user@${TS_IP}` (or `tailscale ssh`) works.
 
 ### A3. Cowrie as an unprivileged user
 
@@ -72,8 +74,8 @@ cp etc/cowrie.cfg.dist etc/cowrie.cfg
 EOF
 ```
 
-Tell Cowrie to listen on 2222 (we redirect 22 → 2222 with nftables, so Cowrie
-never needs root):
+Tell Cowrie to listen on 2222. nftables redirects port 22 to 2222, so Cowrie
+never needs root:
 
 ```bash
 sudo -u cowrie sed -i \
@@ -117,12 +119,12 @@ sleep 5 && sudo systemctl status cowrie --no-pager | head -5
 
 ### A4. Firewall + egress lockdown (nftables)
 
-Default-deny inbound except the honeypot and the tailnet. Egress is allow-listed
-by the `cowrie` UID: DNS, NTP and outbound web only, so that a process which
-escapes the emulation cannot scan, flood or pivot. The outbound rules also
-block the internal ranges, which matters more than it looks: Cowrie fetches
-attacker-supplied URLs by design, its own destination check does not cover the
-Tailscale range, and it follows redirects after that check runs.
+Inbound traffic is denied by default except for the honeypot and the tailnet.
+Outbound traffic from the `cowrie` UID is limited to DNS, NTP and web, so a
+process that escapes the emulation cannot scan, flood or pivot. The outbound
+rules also block internal ranges. Cowrie fetches the URLs attackers give it,
+which is how samples are captured, and its own destination check does not
+cover the Tailscale range and runs before it follows redirects.
 
 The ruleset is versioned at `sensor/nftables-radar.nft`. Install it, adjusting
 the uid in the file first if Cowrie does not run as 999:
@@ -151,22 +153,22 @@ for t in http://169.254.169.254/ http://<pi-tailnet-ip>/ http://100.100.100.100/
 sudo -u cowrie getent hosts example.com
 ```
 
-### A5. Confirm it's catching traffic
+### A5. Confirm it is receiving traffic
 
-Within an hour (usually minutes) you'll see hits:
+Connections usually start within minutes, and always within an hour:
 
 ```bash
 sudo tail -f /opt/cowrie/var/log/cowrie/cowrie.json
 ```
 
-Leave it. Move to the Pi.
+Leave it running and move to the Pi.
 
 ---
 
 ## PART B: Pi analytics
 
-On the Pi (also joined to the same tailnet). Get the app files onto it: clone your
-repo, or `scp` the `threat-radar/` directory. Assume it lands at `~/threat-radar`.
+The Pi joins the same tailnet. Copy the app onto it, either by cloning the
+repository or with `scp`. These steps assume it is at `~/threat-radar`.
 
 ### B1. Install to /opt and create the venv
 
@@ -189,10 +191,11 @@ curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
 ```
 
-### B3. Pull Cowrie logs from the VPS (Pi-initiated = Pi holds the keys)
+### B3. Pull Cowrie logs from the VPS
 
-Generate a key **on the Pi**, install the public half on the VPS as a restricted,
-read-only puller. The VPS never gets credentials to reach into the Pi.
+The Pi starts every connection, so the Pi holds the key and the VPS never has
+credentials for the Pi. Generate the key on the Pi and install the public half
+on the VPS, restricted to reading logs.
 
 ```bash
 # On the Pi:
@@ -200,7 +203,7 @@ sudo -u radar ssh-keygen -t ed25519 -f /opt/threat-radar/.ssh_pull -N ""
 sudo -u radar cat /opt/threat-radar/.ssh_pull.pub
 ```
 
-On the **VPS**, add that public key restricted to log reads only:
+On the VPS, add that public key with a forced command that only reads the log:
 
 ```bash
 # EDIT the key string below to the line you just printed on the Pi
@@ -210,8 +213,9 @@ echo "command=\"cat /opt/cowrie/var/log/cowrie/cowrie.json\",no-port-forwarding,
 # ensure the cowrie account can be reached over the tailnet on 2200
 ```
 
-Back on the **Pi**, a puller that appends the remote log into the spool every 30s.
-The ingester's line-hash dedupe makes repeated full pulls safe.
+Back on the Pi, create a script that copies the remote log into the spool. The
+ingester skips any line it has already stored (it hashes each line), so pulling
+the whole file every time is safe.
 
 ```bash
 # EDIT VPS_TS_IP to the VPS tailnet IP from step A1
@@ -238,9 +242,11 @@ printf 'SENSOR_TS_IP=<vps-tailnet-ip>\n' | sudo tee /etc/threat-radar/pull.env >
 sudo systemctl daemon-reload && sudo systemctl enable --now radar-pull.timer
 ```
 
-### B4. GeoLite2 databases (free, local, no per-lookup latency)
+### B4. GeoLite2 databases
 
-Sign up for a free MaxMind account, create a license key, then:
+GeoLite2 is free and runs locally, so lookups need no network call.
+
+Create a free MaxMind account and a licence key, then:
 
 ```bash
 sudo apt-get -y install geoipupdate
@@ -260,7 +266,7 @@ ls -la /var/lib/GeoIP/     # expect GeoLite2-City.mmdb, GeoLite2-ASN.mmdb
 
 The unit files live in `deploy/systemd/` and are installed from there, so the
 deployed configuration stays reviewable and can be rebuilt from the
-repository. Each one is confined to the paths and network it actually needs;
+repository. Each unit can reach only the paths and network it needs, and
 `deploy/README.md` explains the ownership model they assume.
 
 ```bash
@@ -284,11 +290,11 @@ You should see JSON counts climbing as logs flow in.
 
 ### B6. View the dashboard
 
-- **Just you / interviews:** browse to `http://<pi-tailnet-ip>:8080` from any device
-  on your tailnet. Nothing exposed publicly.
-- **Public URL (optional, still no router changes):** free Cloudflare Tunnel,
-  `cloudflared tunnel --url http://127.0.0.1:8080` for a quick link, or a named
-  tunnel on your own domain for `radar.theobrucker.us`.
+- Private: browse to `http://<pi-tailnet-ip>:8080` from any device on the
+  tailnet. Nothing is exposed publicly.
+- Public, with no router changes: a Cloudflare Tunnel, either
+  `cloudflared tunnel --url http://127.0.0.1:8080` for a temporary link or a
+  named tunnel on your own domain, such as `radar.theobrucker.us`.
 
 ---
 
@@ -306,13 +312,12 @@ sudo -u radar sqlite3 /opt/threat-radar/data/radar.db \
 
 ## Notes
 
-- **Attribution honesty.** A residential-grade honeypot catches commodity botnets
-  and mass scanners, not nation-state APTs. The dashboard footer already frames
-  origins as telemetry, not confirmed attribution. Keep it that way, because it reads as
-  competence, not the reverse.
-- **Rebuild cheaply.** Part A is short enough to re-run from zero if the free VPS
-  gets reclaimed. Nothing on the sensor is precious; the data lives on the Pi.
-- **Extending enrichment.** GreyNoise Community, AbuseIPDB, and VirusTotal (on the
-  payload hashes Cowrie captures) slot into `enrich.py` alongside the GeoLite2
-  lookups, using the same batch loop with rate-limit-aware queuing for the free tiers.
+- Attribution: a single honeypot on a cloud VPS mostly sees botnets and mass
+  scanners. The dashboard describes source locations as where infrastructure is
+  hosted, and should never present them as who is behind an attack.
+- Rebuilding: Part A is short enough to run again from scratch if the VPS is
+  reclaimed. The sensor holds nothing that is not also on the Pi.
+- More enrichment: GreyNoise Community or AbuseIPDB lookups would fit in
+  `enrich.py` next to the GeoLite2 lookups, using the same batch loop and
+  rate limiting for free-tier APIs.
 ```

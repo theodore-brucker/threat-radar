@@ -1,10 +1,8 @@
-/* pages/credentials.js v4 - campaigns rather than raw pairs.
+/* pages/credentials.js - credential campaigns, then the raw pairs.
  *
- * The example pairs column is the fix that matters here. v3 rendered each
- * example as one link reading `user:pass 969`, so a row came out as
- * "0:0 969firedancer:firedancer 25admin:admin 22" and a reader could not see
- * where one pair ended and the next began. The count is its own element now,
- * and every pair is a separate chip. */
+ * In the example pairs column each pair is its own chip with its count in a
+ * separate element, so a row of examples cannot run together into one
+ * unreadable string such as "0:0 969firedancer:firedancer 25". */
 
 import { api, h, num, pct, panel, table, stats, tag, entity, dayLink, emptyState } from "../core.js";
 
@@ -28,9 +26,9 @@ export async function render() {
   return h("div", {}, [
     h("div", { class: "pagehead" }, [
       h("p", { text:
-        "Every username and password offered at the login prompt, clustered by theme. "
-        + "The sensor accepts a seeded set by design, so a success here means it let "
-        + "someone in rather than that anything was breached." }),
+        "Every username and password offered at the login prompt, grouped by theme. "
+        + "The sensor accepts a fixed list of passwords, so a successful login here "
+        + "means the sensor let someone in. No real system was breached." }),
     ]),
 
     stats([
@@ -41,8 +39,8 @@ export async function render() {
     ]),
 
     panel("Campaigns",
-      "Pairs are clustered by rule, so a hundred variations of one theme read as one "
-      + "campaign. A pair can belong to more than one.",
+      "Pairs are grouped by rule, so a hundred variations on one theme appear as one "
+      + "row. A pair can belong to more than one campaign.",
       [table(
         [{ label: "Campaign" }, { label: "Attempts", num: true }, { label: "Share", num: true },
          { label: "Pairs", num: true }, { label: "Source addresses", num: true },

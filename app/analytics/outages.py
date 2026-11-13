@@ -2,8 +2,8 @@
 
 Volume kept flowing through the July 31 to August 17 fault because connections
 were still logged; only authentication and everything downstream of it died.
-Any trend that averages those days in will report a collapse in attacker
-success that is really a collapse in sensor function, so they are excluded
+A trend that averages those days in shows attacker success collapsing when
+the sensor was the thing that failed, so those days are excluded
 from baselines by name and drawn on the activity chart as a labelled gap.
 """
 

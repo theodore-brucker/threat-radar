@@ -2,8 +2,8 @@
 
 The decision is thirty days of raw events and indefinite per-day and lifetime
 rollups. The worker used to delete the payload and credential lifetime tables
-and refill them from the raw window on every run, so each prune quietly took
-history with it. Every test here builds the rollups, deletes the older raw
+and refill them from the raw window on every run, so each prune took
+history with it and nothing reported it. Every test here builds the rollups, deletes the older raw
 events the way the pruner does, builds again, and checks that nothing the
 first build recorded has gone.
 

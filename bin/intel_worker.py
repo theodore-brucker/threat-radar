@@ -8,7 +8,7 @@ idempotent for the days it touches.
   intel_worker.py                     full pass (build + enrich)
   intel_worker.py --only payloads     one stage
   intel_worker.py --no-network        skip VirusTotal, URLhaus and MalwareBazaar
-  intel_worker.py --backfill-all      rebuild every day, not just recent ones
+  intel_worker.py --backfill-all      rebuild every day, including old ones
 
 Stages: facts, sessions, tunnels, payloads, credentials, spikes, intel,
 submit (VirusTotal), bazaar (MalwareBazaar)
@@ -372,8 +372,8 @@ def build_payloads(con, backfill_all=False):
     Raw events are kept for a month and these tables are kept indefinitely, so
     nothing here is refilled from raw events wholesale. Earlier versions
     deleted all three tables and rebuilt them from the raw window on every
-    run, which quietly cut payload history to thirty days, including the
-    per-day table whose whole purpose is the long view.
+    run, which cut payload history to thirty days without any error,
+    including the per-day table that exists to keep the long view.
 
     Sightings accumulate: one row per transfer event, keyed so that inserting
     the same event again is a no-op, which means rows from days that have left
@@ -1274,7 +1274,7 @@ def _mb_tags(blob):
 
 
 def _mb_comment(first_day, via_url, via_upload):
-    """Context for the MalwareBazaar entry. Deliberately limited to date and
+    """Context for the MalwareBazaar entry. Limited to date and
     delivery method: nothing that identifies the sensor or its persona."""
     if via_url:
         how = "fetched from a URL (wget/curl) inside the session"

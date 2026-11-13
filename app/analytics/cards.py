@@ -337,7 +337,7 @@ BUILDERS = {
 def batch(con, items):
     """items: [{type, value}]. Returns {"type:value": card} for those found.
 
-    Entities with no card are simply absent rather than an error: a link to
+    Entities with no card are absent rather than an error: a link to
     something the fact tables have not caught up with should still work, it
     just will not preview.
     """

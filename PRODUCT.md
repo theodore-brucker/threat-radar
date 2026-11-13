@@ -20,7 +20,7 @@ it is for and what it must do; `DESIGN.md` says how it looks.
 
 - Show how far intruders get, and make that the first thing a visitor sees.
 - Let any indicator be searched and opened as its own page.
-- Say plainly what the data cannot support (see the Method page).
+- State what the data cannot support (see the Method page).
 - Never serve sample bytes, never render attacker text as markup, and make no
   third-party requests from the browser.
 - Stay readable on a phone and printable on paper.

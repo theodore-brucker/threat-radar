@@ -122,7 +122,7 @@ def notable_sessions(con, days=30, limit=12):
     """Sessions worth looking at, not the most recent ones.
 
     The old recent-sessions panel filled with the same two IPs opening empty
-    connections. Rank by what the session actually did instead.
+    connections. Rank by what the session did instead.
     """
     # At most two rows per source, so one busy address cannot fill the panel
     # the way the old recent-sessions list did.

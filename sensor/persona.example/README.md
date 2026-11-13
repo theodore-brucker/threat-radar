@@ -1,7 +1,6 @@
 # Example persona
 
-A minimal, deliberately generic persona with the same file shapes as a live
-one. Nothing here matches a deployed sensor. Copy it to build your own:
+A minimal, generic persona with the same file shapes as a live one. Nothing here matches a deployed sensor. Copy it to build your own:
 
 ```bash
 cp persona.example/cowrie.cfg          /opt/cowrie/cowrie.cfg
@@ -10,7 +9,7 @@ cp -r persona.example/honeyfs/.        /opt/cowrie/honeyfs/
 sudo -u cowrie python3 /opt/cowrie/bin/persona_fs.py apply --dry-run
 ```
 
-Things worth getting right in a real persona, each learned from a live sensor:
+Lessons from running a live sensor:
 
 - Hostname, banner, `uname` values and `ssh_version` must agree with each
   other. A banner claiming one OpenSSH build while the shell reports another

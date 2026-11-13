@@ -26,7 +26,7 @@ KNOWN = {
         "label": "libssh default",
         "kind": "library",
         "note": "libssh's default offer. Common to many botnet families and "
-                "to legitimate software; shared use implies nothing.",
+                "to legitimate software, so two addresses sharing it are not linked.",
     },
     "aae6b9604f6f3356543709a376d7f657": {
         "label": "OpenSSH 7.x client",
@@ -39,7 +39,8 @@ KNOWN = {
         "kind": "library",
         "note": "The Go SSH library's default algorithm offer. About 15k "
                 "sessions here across unrelated netblocks carry it, so it is "
-                "a language choice, not a toolmark. Do not cluster on it.",
+                "evidence of the language the tool was written in and nothing more. "
+                "Do not cluster on it.",
     },
     "b12d2871a1189eff20364cf5333619ee": {
         "label": "paramiko",

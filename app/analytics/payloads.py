@@ -55,7 +55,7 @@ def summary(con, days=30):
     ) or {}
 
     # Reputation verdicts are a property of the sample, but only count the
-    # ones actually seen inside the window.
+    # ones seen inside the window.
     flagged = 0
     if db.table_exists(con, "payload_intel") and db.table_exists(con, "payload_daily"):
         cut_day = str(ts.cutoff(days))[:10]

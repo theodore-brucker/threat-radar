@@ -2,7 +2,7 @@
 
 The dashboard renders attacker strings, so the only safe way to put them on a
 page is as text. These checks keep the code from ever growing an HTML sink,
-and prove that the policy the page is served with actually covers the inline
+and prove that the policy the page is served with covers the inline
 script it contains: a mismatch there would not be a vulnerability, but it
 would break the page for every reader under the policy the site depends on.
 """
@@ -103,7 +103,7 @@ class DesignSystemTests(unittest.TestCase):
 
     Colours, radii and the label style live in tokens.css; the component and
     shell stylesheets only refer to them. A literal colour or a second radius
-    in a component is how a design system quietly stops being one.
+    in a component sheet breaks the system without any visible error.
     """
 
     SHEETS = ("app.css", "components.css")

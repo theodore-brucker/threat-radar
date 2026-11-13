@@ -18,10 +18,9 @@ write:
 | `.ssh_pull`, `.ssh_pull.pub`, `.ssh_known_hosts` | `radar:radar`, key mode 600 | The pull transport runs as the service account |
 | `/run/threat-radar` | `radar:radar`, mode 750 | Lock files, created by the units through `RuntimeDirectory` |
 
-The reason for the split is narrow and worth stating plainly. The processes
-that parse attacker-controlled data run as `radar`. If that account can also
-write the code root executes on the next deploy, then a bug in a parser is a
-path to root rather than a bug in a parser. `deploy/install-ownership.sh`
+The processes that parse attacker-controlled data run as `radar`. If that
+account could also write the code root runs on the next deploy, a bug in a
+parser would become a path to root. `deploy/install-ownership.sh`
 moves an existing install onto this model and `deploy/update.sh` keeps it
 there on every deploy.
 
@@ -43,13 +42,13 @@ needs:
 | `excluded_sources.txt` | `radar-intel` | Operator addresses kept out of analysis |
 | `credential_tags.local.json` | `radar-intel`, `radar-web` | Credential rules that would identify this sensor |
 
-One file holding every key, read by every unit, meant the dashboard process
-held the API keys it never uses.
+Splitting the files means the dashboard process never holds the API keys,
+which it has no use for.
 
 ## Units
 
 `deploy/systemd/` holds the installed units. Each one is confined to what it
-actually needs: no capabilities, no new privileges, a read-only filesystem
+needs: no capabilities, no new privileges, a read-only filesystem
 apart from one or two `ReadWritePaths`, a system call filter, and no network
 at all for ingest, enrichment and pruning; the dashboard may use the
 loopback interface and nothing else. Only the insights worker

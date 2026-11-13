@@ -8,7 +8,7 @@ how it looks and why.
 
 `tests/test_frontend.py::DesignSystemTests` enforces the cheapest rules
 (token-only colours, one radius, no all-caps labels, every icon exists), so a
-change that breaks one fails CI rather than drifting in.
+change that breaks one fails CI.
 
 ## Brief
 
@@ -18,14 +18,14 @@ what happens to an exposed server, and an analyst who wants to pivot from an
 address to its sessions to the file it dropped. The overview's Summary mode
 serves the first, everything else serves the second.
 
-The site should feel like an instrument rather than a marketing page: calm,
-dense where the data is dense, and honest about what the numbers can and
-cannot support. It should not look like a SaaS template, a terminal cosplay
-(green on black), or a government form.
+The site is a measuring tool. Tables are as dense as the data needs, the copy
+says what the numbers cannot support, and nothing on a page exists to sell the
+project. Avoid the look of a SaaS template and of a green-on-black terminal.
 
-The one memorable element is the **escalation funnel**: connections narrowing
-to logins, shells, and files moved. Every other choice is quiet so that one
-can be loud.
+The escalation funnel (connections narrowing to logins, shells and files
+moved) is the visual centre of the overview and gets the largest type and the
+stage colours. Other elements use the neutral palette so the funnel stands
+out.
 
 ## References
 
@@ -70,11 +70,9 @@ refer to tokens only; a literal colour or radius there is a bug.
 | alert / warn / ok | red / amber / green | | status, never decoration |
 | stage 0 to 4 | grey, teal, deep teal, amber, red | | escalation stage, nothing else |
 
-Three rules:
-
-1. **One accent.** Blue means "you can act on this". Bars, lines and emphasis
-   in prose are ink, not blue. If something is blue and not clickable, it is
-   wrong.
+1. **One accent.** Blue marks things you can click or that have focus. Bars,
+   lines and emphasis in prose are ink. A blue element that does nothing when
+   clicked is a bug.
 2. **Stage colours are data.** They appear only where a value is a stage.
    Stage never relies on colour alone: chips carry a numeral and a word, and
    stages 0 and 1 are outlined while 2 to 4 are filled (the same hollow and
@@ -152,13 +150,15 @@ Three rules:
 
 ## Copy
 
-- Write for the reader, in plain words: "Show the last 30 days", not
-  "Widen to 30". A button says what happens, and its confirmation reuses the
-  verb (Copy, Copied).
-- Empty and error states explain what happened and what to do, in the
-  interface's voice. They do not apologise and are never vague.
+`docs/WRITING.md` has the full list of rules and the habits to avoid. The
+ones specific to the interface:
+
+- A button says what happens ("Show the last 30 days"), and its confirmation
+  reuses the verb (Copy, Copied).
+- Empty and error states say what happened and what to do. They do not
+  apologise.
 - Headings have no full stop. Sentences do.
-- No em dashes, no "A · B · C" meta strings, no arrows appended to links.
+- No dot-separated meta strings ("A · B · C") and no arrows appended to links.
 - Keep technical terms where an analyst needs them (HASSH, SHA-256), and use
   `term()` to give the Summary reader the plain reading on hover.
 

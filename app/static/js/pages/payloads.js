@@ -87,14 +87,13 @@ export async function render() {
   return h("div", {}, [
     h("div", { class: "pagehead" }, [
       h("p", { text: isExec()
-        ? "Files that attackers pulled onto the decoy or pushed off it. Each one is "
-          + "fingerprinted, checked against public malware databases, and anything the "
-          + "industry has never seen before is sent upstream so other defenders benefit."
+        ? "Files that attackers downloaded onto the decoy or copied to it. Each file is "
+          + "hashed and checked against public malware databases, and files those "
+          + "databases have no record of are uploaded so other researchers can see them."
         : "Every file a session moved, rolled up by hash and source URL, with VirusTotal "
           + "and URLhaus standings attached. Hashes VirusTotal returns 404 on are uploaded "
           + "there, and anything captured in the last ten days that at least one engine "
-          + "flags goes to MalwareBazaar under a named account, which makes the sensor a "
-          + "contributor rather than only a consumer." }),
+          + "flags goes to MalwareBazaar under a named account." }),
     ]),
 
     panel("Contribution loop", "From capture to upstream submission.", [
@@ -114,9 +113,9 @@ export async function render() {
     ]),
 
     panel("Families",
-      "Derived from the labels detection engines already gave us: category and engine-noise "
-      + "tokens are dropped and the best-supported name is kept. This follows vendor naming, "
-      + "so it says what engines call a sample, not who wrote it.",
+      "Taken from the labels detection engines gave each sample. Generic words such as "
+      + "\"trojan\" or \"generic\" are dropped and the name most engines agree on is "
+      + "kept. It is what vendors call the sample and says nothing about who wrote it.",
       [table(
         [{ label: "Family" }, { label: "Samples", num: true },
          { label: "Transfers", num: true }, { label: "Basis" }, { label: "Last seen" }],
@@ -198,8 +197,8 @@ export async function render() {
         }))]),
 
     panel("Distribution hosts",
-      "A host that also appears as an attacker is serving stagers from the same box it "
-      + "scans with.",
+      "Hosts that served the files. A host that also appears as an attacker is serving "
+      + "its downloads from the same machine it scans from.",
       [table(
         [{ label: "Verdict" }, { label: "Host" }, { label: "URLs", num: true },
          { label: "Hits", num: true }, { label: "Also scanning" }],

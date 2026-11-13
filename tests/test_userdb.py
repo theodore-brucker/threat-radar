@@ -89,7 +89,7 @@ class WarnLineTests(unittest.TestCase):
 
     def test_extra_field_truncates_the_password(self):
         # Cowrie takes field 2 and ignores the rest, so "pw:extra" loads as
-        # "pw" and the entry quietly means something narrower than it reads.
+        # "pw", and the entry accepts less than it appears to.
         self.assertIn("truncated", self.warn_reason("alice:x:pw:extra"))
 
     def test_short_line_is_skipped_not_fatal(self):

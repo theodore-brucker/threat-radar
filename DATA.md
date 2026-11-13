@@ -74,7 +74,7 @@ are replaced with `[redacted]` in every export.
 
 The dashboard is served on a private network behind authentication. It shows
 aggregates, source addresses and their networks, credential pairs, commands,
-session narratives, and sample analysis: text samples defanged and binaries
+session timelines, and sample analysis: text samples defanged and binaries
 described by metadata and strings. It offers no download of any sample. Each
 entity page can export its own record as Markdown or JSON, which contains the
 same material and no more.
