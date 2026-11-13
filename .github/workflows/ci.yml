@@ -101,7 +101,19 @@ jobs:
         run: |
           pip-audit --require-hashes --disable-pip -r requirements.txt
           pip-audit --require-hashes --disable-pip -r requirements-dev.txt
-          pip-audit --require-hashes --disable-pip -r requirements-cowrie.txt
+          # Cowrie 3.0.14, the version the sensor runs, pins twisted==26.4.0,
+          # and the fixes for these Twisted advisories ship in 26.10.0, which
+          # only Cowrie 3.1.x accepts. This lock exists so CI can run Cowrie's
+          # userdb parser, and moving it ahead of the sensor would break that
+          # parity check. The advisories are accepted here until the sensor
+          # moves to Cowrie 3.1.x, at which point this list must be deleted.
+          # Sensor exposure is recorded under "Risks that remain" in
+          # ARCHITECTURE.md.
+          pip-audit --require-hashes --disable-pip -r requirements-cowrie.txt \
+            --ignore-vuln CVE-2026-106454 --ignore-vuln CVE-2026-115778 \
+            --ignore-vuln CVE-2026-115774 --ignore-vuln CVE-2026-115775 \
+            --ignore-vuln CVE-2026-115776 --ignore-vuln CVE-2026-115877 \
+            --ignore-vuln CVE-2026-83813 --ignore-vuln GHSA-vpp8-g58w-m8mp
       - name: Secrets anywhere in history
         run: |
           curl -fsSL -o gitleaks.tgz \

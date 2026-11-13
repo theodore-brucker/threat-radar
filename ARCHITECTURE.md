@@ -89,6 +89,20 @@ The table above is not a guarantee. These gaps are known and accepted for now.
 - Dashboard authentication travels over plain HTTP on the local network.
   Access over the tailnet is encrypted by WireGuard.
 - Captured samples are kept indefinitely on both hosts.
+- The sensor runs Cowrie 3.0.14, which pins Twisted 26.4.0. Eight Twisted
+  advisories published in late 2026 are fixed in Twisted 26.10.0, which only
+  Cowrie 3.1.x accepts, so CI ignores them for the Cowrie lock until the sensor
+  is upgraded. Seven are in components the sensor does not run: the telnet
+  server (disabled in `cowrie.cfg`), the IMAP, IRC and XML stream servers, and
+  the HTTP and HTTP/2 servers. The eighth, CVE-2026-83813, is reachable: the
+  emulated `wget`, `curl`, `nc`, `ftpget` and `tftp` resolve names through
+  `twisted.names`, whose UDP client accepts a response that matches only the
+  16-bit transaction ID, so an off-path attacker who can race the reply could
+  change the address a download goes to. The nftables rules still keep the
+  honeypot account away from private, link-local and tailnet addresses
+  whatever the answer says. Upgrading the sensor to Cowrie 3.1.x removes all
+  eight, and the `--ignore-vuln` list in `.github/workflows/ci.yml` should be
+  deleted in the same change.
 - The persona changed during the period the data covers, so figures either
   side of that boundary describe different hosts and should not be trended
   against each other.
