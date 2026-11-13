@@ -5,6 +5,9 @@
   from `app/static/css/tokens.css` only. Preview with
   `python tools/demo_data.py /tmp/radar-demo` and the uvicorn command in
   `DESIGN.md`, and compare against `docs/design/`.
+- Any prose (interface copy, server messages, docs, comments, commit
+  messages): follow `docs/WRITING.md`. `python tools/writing_check.py --soft`
+  lists likely problems.
 - Attacker-supplied strings reach the DOM through `h()` and `textContent`
   only. `tests/test_frontend.py` fails on any HTML sink.
 - No build step and no npm at runtime. Third-party files are vendored and

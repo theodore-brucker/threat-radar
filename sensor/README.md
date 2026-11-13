@@ -1,8 +1,7 @@
 # Sensor configuration
 
-Mirrors `/opt/cowrie` on the sensor VPS. Everything here previously existed in
-exactly one copy, on that host, as untracked changes to an upstream Cowrie
-checkout.
+This directory mirrors `/opt/cowrie` on the sensor VPS, so the sensor's
+changes to upstream Cowrie are tracked and can be rebuilt from the repository.
 
 ## Public and private halves
 
@@ -28,16 +27,16 @@ blocks the persona paths, so an overlaid checkout cannot commit them back here.
   carry separate copies of those rules and each missed cases the other
   caught. The persona tooling, `persona_fs.py` and
   `plant_token.sh`, lives in the private tree with the persona files it acts
-  on, and is overlaid into the same `bin/` before deploy.
+  on, and is copied into the same `bin/` before deploy.
 - `patches/` holds local modifications to upstream Cowrie source, which must be
   reapplied after any `git pull` in `/opt/cowrie`.
   `lspci-txtcmds.patch` makes the `lspci` built-in read the operator file,
   since built-ins otherwise win over txtcmds in `getCommand()`.
   `factory-kex.patch` drops configured kex algorithms Twisted does not
   implement, instead of advertising them and dying at key exchange.
-- `systemd/` holds the unit and its drop-in for `cowrie.service`: a hard gate
-  on userdb validity, which refuses to start rather than run with
-  authentication silently dead.
+- `systemd/` holds the unit and its drop-in for `cowrie.service`. The drop-in
+  stops Cowrie from starting with a userdb it cannot load, because Cowrie would
+  otherwise start and reject every login without logging an error.
 - `nftables-radar.nft` redirects 22 to 2222 and confines the Cowrie uid to DNS,
   NTP, 80 and 443 outbound.
 - `persona.example/` holds a sample `cowrie.cfg` overlay, `fs_spec.json` and
@@ -65,8 +64,8 @@ tag: it refuses if tracked files differ from upstream anywhere outside the
 patch set, or if the target adds a file that exists here untracked, and it
 proves the patches apply to the target before touching anything. It writes a
 tarball of everything except `var/` first, and rolling back is the same script
-with the previous tag. It does not restart Cowrie, because that is the step
-worth watching.
+with the previous tag. It does not restart Cowrie, so that you can restart it
+yourself and watch the log.
 
 ## Ownership on the sensor
 
@@ -76,13 +75,12 @@ the validator that gates start-up and the forced-command wrapper, belongs to
 root and is readable by the account through group and mode rather than
 ownership.
 
-The reason is specific rather than general hygiene. That account is the process
-attackers are invited to break. If it can write `bin/pull-logs.sh` it decides
+That account runs the process attackers are invited to break. If it can write `bin/pull-logs.sh` it decides
 what the collector receives on the next pull. If it can write its own
 `authorized_keys` it can drop the forced command. If it can write
 `bin/validate_userdb.py` it can remove the check that keeps a malformed userdb
-from taking authentication down silently, which has already cost this sensor
-seventeen days once.
+from breaking authentication without an error, which once took this sensor
+offline for seventeen days.
 
 `bin/install-ownership.sh` moves an existing install onto that model, and
 `sshd/10-radar.conf.example` shows the matching sshd configuration, with the

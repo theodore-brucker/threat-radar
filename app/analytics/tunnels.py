@@ -1,7 +1,7 @@
 """direct-tcpip breakdown.
 
 Cowrie logs every forwarding request the client asks for, even though nothing
-is actually proxied. The destination host and port say what the operator wanted
+is proxied. The destination host and port say what the operator wanted
 the box for: an open relay, a proxy check, a mining pool, or a pivot into
 someone else's network.
 """

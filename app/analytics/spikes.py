@@ -172,7 +172,7 @@ def _outage_for(con, day):
     A spike inside an auth outage is connect/close churn against a sensor that
     could not authenticate anyone. Attributing it to whichever ASN happened to
     scan hardest that day, as this module did for 2026-08-04 to 08-06, reads as
-    escalation and is simply wrong.
+    escalation and is wrong.
     """
     try:
         return db.qone(

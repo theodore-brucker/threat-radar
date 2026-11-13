@@ -162,7 +162,7 @@ class HostileSensorTests(ProtocolCase):
         # script, so newlines and bytes arrive exactly as a sensor would send
         # them. An earlier version quoted them and the manifest arrived as one
         # malformed line, which made both tests below pass without testing
-        # anything. The request log proves the chunk path is really reached.
+        # anything. The request log proves the chunk path is reached.
         answers = os.path.join(self.tmp, "answers")
         os.makedirs(answers, exist_ok=True)
         with open(os.path.join(answers, "manifest"), "w") as fh:

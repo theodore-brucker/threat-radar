@@ -81,7 +81,7 @@ class TsExpr:
     def day_range(self, day: str, span_days: int = 1):
         """Half-open [lo, hi) bounds for a YYYY-MM-DD day.
 
-        The ISO form deliberately compares against the bare date string:
+        The ISO form compares against the bare date string:
         '2026-08-04T00:00:00.123Z' sorts before '2026-08-04T00:00:00Z' because
         '.' is below 'Z' in ASCII, so a full timestamp bound would silently
         drop events in the first fraction of a second of the day.

@@ -2,7 +2,7 @@
 
 The site was showing raw vendor strings: 'trojan. [Text]',
 'miner.genericrxss/multiverze [ELF]', and in one case a sha256 followed by
-'.unknown [unknown]'. None of those answer the question a reader actually
+'.unknown [unknown]'. None of those answer the question a reader
 has, which is what families land on this sensor.
 
 This module derives a family name from the labels the vendors already gave
@@ -106,7 +106,7 @@ def derive(records):
     votes = Counter()
     by_source = {}
     for rec in records or []:
-        # Only engines that actually flagged the sample get a vote. A label
+        # Only engines that flagged the sample get a vote. A label
         # attached to an "unknown" or "error" record is a status string.
         if (rec.get("verdict") or "").lower() not in ("malicious", "suspicious"):
             continue

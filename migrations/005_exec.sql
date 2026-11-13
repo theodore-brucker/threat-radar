@@ -1,7 +1,7 @@
 -- 005_exec.sql
--- Outage bookkeeping. A period-over-period trend is a lie if the baseline
+-- Outage bookkeeping. A period-over-period trend is wrong if the baseline
 -- includes days the sensor was not working, so those days are named here and
--- excluded from every comparison rather than quietly averaged in.
+-- excluded from every comparison.
 
 CREATE TABLE IF NOT EXISTS outage_windows (
   start_day  TEXT NOT NULL,

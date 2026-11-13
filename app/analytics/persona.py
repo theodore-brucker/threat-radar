@@ -1,13 +1,13 @@
 """Persona epochs.
 
 The sensor has not presented the same host for its whole life. Each persona
-change altered what attackers were being offered, so it altered what they
-did. Trending across a boundary measures our own configuration change and
-reports it as attacker behaviour.
+change altered what attackers were being offered, and so what they did. A
+trend across a boundary mixes our configuration change with any change in
+attacker behaviour.
 
-This module answers three questions: which persona was live on a given day,
-where the boundaries fall for drawing them, and whether a comparison spans
-one. Same shape as outages.py, deliberately.
+This module says which persona was live on a given day, where the boundaries
+fall for drawing them, and whether a comparison spans one. It has the same
+shape as outages.py.
 """
 
 
@@ -46,8 +46,8 @@ def boundary_between(con, start_day, end_day):
     """The persona change falling inside (start_day, end_day], if any.
 
     Used to mark a period-over-period comparison as not like-for-like. Only
-    the most recent boundary in range is returned; two changes inside one
-    window makes the comparison no more valid than one does.
+    the most recent boundary in range is returned, because a second change in
+    the same window does not make the comparison any less comparable.
     """
     if not start_day or not end_day:
         return None
@@ -56,7 +56,7 @@ def boundary_between(con, start_day, end_day):
 
 
 def comparability(con, current_days, prior_days):
-    """Describe whether two day lists can honestly be compared.
+    """Describe whether two day lists can be fairly compared.
 
     Returns None when they can. Otherwise a dict naming the boundary and
     which side of it each window sits on, so the page can say so rather than
@@ -94,8 +94,8 @@ def comparability(con, current_days, prior_days):
         "prior_persona": pri_name or "stock Cowrie profile",
         "reason": (f"The current window ran as {cur_name or 'a different persona'} "
                    f"and the prior one as {pri_name or 'a stock Cowrie profile'}. "
-                   f"The movement between them reflects that change, not a change "
-                   f"in attacker behaviour."),
+                   f"Some or all of the difference between them comes from that change "
+                   f"in what the sensor presented."),
     }
 
 

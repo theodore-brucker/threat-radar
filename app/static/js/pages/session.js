@@ -2,8 +2,7 @@
 
    Every string here came from an attacker and reaches the DOM through
    textContent. Commands render as inert text in a block that scrolls
-   horizontally: v3 used word-break:break-all, which split IP addresses
-   mid-octet across eight lines and made a command impossible to read. */
+   horizontally, so long commands keep their addresses intact. */
 
 import { api, h, num, panel, shortDate, tag, mid, ipLink,
          entity, cmdBlock, breadcrumbs, emptyState, currentPath,
@@ -13,7 +12,7 @@ export const TITLE = "Session";
 export let DOC_TITLE = "Session";
 
 // Events that change what the session means, rather than protocol chatter.
-const PIVOTAL = new Set([
+const KEY_EVENTS = new Set([
   "cowrie.login.success",
   "cowrie.session.file_download",
   "cowrie.session.file_upload",
@@ -86,7 +85,7 @@ export async function render() {
     panel("Timeline", `${num(tl.length)} events, starting ${shortDate(m.started)} UTC.`, [
       tl.length
         ? h("ol", { class: "tl" }, tl.map((e) =>
-            h("li", { class: PIVOTAL.has(e.eventid) ? "tl-item key" : "tl-item" }, [
+            h("li", { class: KEY_EVENTS.has(e.eventid) ? "tl-item key" : "tl-item" }, [
               h("span", { class: "tl-clock mono", text: clock(e.ts, base) }),
               h("span", { class: "tl-dot" }),
               h("div", { class: "tl-body" }, [

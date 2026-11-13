@@ -20,7 +20,7 @@ MAX_QUERY = 128
 
 
 def _like(q):
-    """Escape LIKE wildcards so a query containing % or _ matches literally."""
+    """Escape LIKE wildcards so a % or _ in a query matches that character."""
     return q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 

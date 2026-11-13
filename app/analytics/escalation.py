@@ -1,7 +1,7 @@
-"""Escalation: how far each source got, and the rail that frames the site.
+"""Escalation: how far each source got, and the rail drawn on the overview.
 
-The funnel is the narrative spine. Every source is reduced to the furthest
-stage it reached, which is what colours the map and filters the tables.
+Every source is reduced to the furthest stage it reached. That stage colours
+the map and filters the tables.
 
   0 connected only     1 authenticated     2 reached a shell
   3 transferred a file 4 transferred confirmed malware
@@ -23,8 +23,8 @@ def rail(con, days=30):
     """Counts for each stage of the escalation rail.
 
     Stages 0 to 3 are session counts. Stages 4 and 5 switch to unique samples,
-    which is called out in the unit field so the page can label it honestly
-    rather than implying one continuous measure.
+    and the unit field says so, so the page can label the change of unit
+    instead of drawing one continuous measure.
     """
     days = db.clamp_days(days, default=30)
     ts = db.TsExpr(con)
@@ -309,7 +309,7 @@ def rebuild_daily(con, backfill_all=False, recent_days=3):
 
     The lifetime table answers "how far has this address ever got"; this one
     answers "how far did it get during the window I am looking at", which is
-    what every list view and the map actually need.
+    what every list view and the map need.
     """
     row = con.execute("SELECT MIN(day) lo, MAX(day) hi FROM session_facts").fetchone()
     if not row or not row[0]:

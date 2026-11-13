@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""What Cowrie actually does with userdb.txt, in one place.
+"""What Cowrie does with userdb.txt, in one place.
 
 Two programs need to agree about this file: the generator that writes it from
 observed credentials, and the start-up gate that refuses to launch the sensor
@@ -71,7 +71,7 @@ def decode_file(data):
     """Decode a whole userdb the way Cowrie does.
 
     Returns (lines, None) or (None, reason). A decode failure is fatal for
-    every entry in the file, not just the line that carries the bad byte,
+    every entry in the file, including those after the bad byte,
     which is why this is checked before anything else.
     """
     try:

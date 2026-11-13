@@ -5,7 +5,7 @@ not already hold it: a payload_submissions row with status 'submitted'. Rows
 marked 'duplicate' mean the service already had the file when we checked,
 which is useful context for the funnel but is never counted as ours.
 
-For each contribution this module joins three things back together:
+For each contribution this module joins:
 
   capture context  from sample_provenance, which outlives raw_events retention
   VirusTotal view  from vt_snapshots, one row per lookup, oldest to newest
@@ -24,7 +24,7 @@ from . import db
 
 # VirusTotal stamps first_submission_date when it receives the file; we stamp
 # submitted_at after the upload call returns. Fifteen minutes absorbs clock
-# skew and slow uploads without letting a genuinely earlier submitter through.
+# skew and slow uploads without crediting us when another submitter was earlier.
 FIRST_TOLERANCE_S = 900
 
 SERVICES = ("virustotal", "malwarebazaar")
@@ -97,7 +97,7 @@ def trajectory(snapshots, submitted_at=None):
 
 
 def _submitted(con, sha=None):
-    """{sha: {service: row}} for rows we actually uploaded."""
+    """{sha: {service: row}} for rows we uploaded."""
     if not db.table_exists(con, "payload_submissions"):
         return {}
     sql = ("SELECT sha256, service, permalink, size_bytes, submitted_at "

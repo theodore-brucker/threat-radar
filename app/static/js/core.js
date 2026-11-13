@@ -1,13 +1,12 @@
-/* core.js v4 - shared plumbing.
+/* core.js - shared plumbing.
  *
- * Two rules hold everywhere in this file and in every module that imports it.
+ * Rules for this file and every module that imports it:
  *
  * 1. Every value that came from an attacker reaches the DOM through
- *    textContent. h() no longer accepts an `html` key at all, so the rule is
- *    now a property of the helper rather than a convention the author has to
- *    remember. Trusted SVG is built with createElementNS instead.
- * 2. Nothing reads by colour alone. Stage is a numeral plus a word, filled or
- *    outlined by whether the source got inside.
+ *    textContent. h() has no `html` option, so the helper cannot be used to
+ *    insert markup. Trusted SVG is built with createElementNS.
+ * 2. Nothing is conveyed by colour alone. Stage is a numeral plus a word,
+ *    filled or outlined by whether the source got inside.
  */
 
 import { icon } from "./icons.js";
@@ -286,16 +285,9 @@ function wireCopy(btn, getText, restore) {
 }
 
 /* ---------- panels ----------
-   A panel does not restate the window: the topbar already shows it. v3 stamped
-   a "last N days" chip into every subtitle, which made each heading three
-   lines tall for no new information.
-
-   4.0 replaced that with a "lifetime" chip keyed off `scoped: false`, which
-   was wrong. Several callers passed that flag to mean "do not show a window
-   chip" rather than "this data is lifetime scoped", so a single session
-   timeline came out labelled LIFETIME. The panels whose data really does
-   ignore the window already say so in their subtitle, which is the honest
-   place for it. The option is still accepted and now does nothing. */
+   A panel does not repeat the time window, because the topbar shows it.
+   Panels whose data ignores the window say so in their subtitle. The fourth
+   argument is accepted for old callers and ignored. */
 
 export function panel(title, sub, body, _opts) {
   return h("section", { class: "panel" }, [
@@ -659,9 +651,8 @@ export function funnel(steps, { reveal = false } = {}) {
 }
 
 /* ---------- attacker-supplied command text ------------------------------
-   Horizontal scroll, never break-all. v3 broke a command carrying sixty IP
-   addresses across eight lines at arbitrary characters, which destroyed both
-   reading and copying. */
+   Long commands scroll horizontally. Breaking them at arbitrary characters
+   would split addresses mid-octet and make the command hard to read or copy. */
 
 export function cmdBlock(text, { clampLines = true } = {}) {
   const value = String(text || "");
@@ -896,7 +887,7 @@ export function spark(rows, { width = 560, height = 56, key = "events" } = {}) {
 }
 
 /* ---------- table fitting ------------------------------------------------
-   Only the tables that actually overflow become scroll containers, because a
+   Only the tables that overflow become scroll containers, because a
    scroll container breaks the sticky header. Measured after layout, and again
    on resize and on any change that alters row widths. */
 
@@ -973,8 +964,8 @@ const PREFIXED = [
   ["/day/", () => import("./pages/entity.js")],
 ];
 
-/* v4 sent any path it did not recognise to the Overview, so a mistyped link
-   looked like it worked and silently showed the wrong page. */
+/* An unknown path gets the not-found page, so a mistyped link cannot look like
+   it worked by showing some other page. */
 const NOT_FOUND = () => import("./pages/notfound.js");
 
 const SITE = "Threat Radar";

@@ -1,9 +1,9 @@
-"""Executive framing.
+"""Figures for the overview's Summary mode.
 
-Three things an executive needs that an analyst does not: a comparison, a
-direction, and a sentence. Totals answer none of those. Everything here turns
-a fact table into a period-over-period movement with the outage days removed
-from both sides of the comparison.
+A non-specialist needs to know whether a number went up or down and by how
+much, which a total does not say. Everything here turns a fact table into a
+change against the prior period, with outage days removed from both sides of
+the comparison.
 """
 
 import datetime as dt
@@ -169,7 +169,7 @@ def concentration(con, days=30, top=3):
 
 
 def goals(con, days=30, top=6):
-    """What the credential guessing was actually after, in plain names."""
+    """What the credential guessing was after, in plain names."""
     days = db.clamp_days(days, default=30)
     if not db.table_exists(con, "cred_pair_daily"):
         return []
@@ -197,9 +197,10 @@ STALE_WARN_DAYS = 1      # nothing today: could be a slow pull
 STALE_FAULT_DAYS = 2     # nothing for two days: delivery is broken
 
 # Stage freshness. The pull and the sample fetch each leave a heartbeat file
-# when they complete, because a stage that fails quietly under a unit that
-# tolerates its failure is otherwise invisible; the sample fetch did exactly
-# that for a day. Thresholds are several missed cycles, not one.
+# when they complete. Both run under units that tolerate their failure, so
+# without the heartbeat a failing stage would not show up anywhere; the
+# sample fetch once failed for a day this way. Thresholds allow several
+# missed cycles before warning.
 BASE = os.environ.get("TR_BASE", "/opt/threat-radar")
 PULL_HEARTBEAT = os.path.join(BASE, "spool", ".pulled")
 FETCH_HEARTBEAT = os.path.join(
@@ -286,13 +287,13 @@ def _ago(fresh, stage):
 
 
 def health(con):
-    """Is the sensor actually working, and is what we are showing current?
+    """Is the sensor working, and is what we are showing current?
 
     Two independent failures, and the site has to tell them apart:
 
       1. The sensor answers but authentication is dead. Connections keep
          arriving, so volume looks fine. This is the July 31 fault.
-      2. Nothing is arriving at all. session_facts simply stops growing.
+      2. Nothing is arriving at all. session_facts stops growing.
 
     The second one used to read as healthy. This function asked for the last
     three days *that had rows*, so if delivery stopped a month ago it fetched
@@ -354,7 +355,7 @@ def health(con):
         status = "fault"
         message = (
             "Connections are arriving but nothing has authenticated in the last "
-            "three days. That is a sensor fault, not a quiet week. "
+            "three days, which points to a sensor fault. "
             f"Last successful authentication: {last_auth.get('day') or 'never'}."
         )
     elif (fresh["connects_recent"] >= AUTH_MIN_CONNECTS
@@ -374,8 +375,8 @@ def health(con):
         )
     elif _stale(fresh, "pull", PULL_WARN_MIN):
         status = "warn"
-        message = (f"The log pull last completed {_ago(fresh, 'pull')}. It runs "
-                   f"every two minutes, so new events are not reaching this site.")
+        message = (f"The log pull last completed {_ago(fresh, 'pull')}. It normally runs "
+                   f"every few minutes, so new events are not reaching this site.")
     elif _stale(fresh, "events", EVENTS_WARN_MIN):
         status = "warn"
         message = (f"The pull is running but the newest event is from "

@@ -20,7 +20,7 @@ the point: they are the only reason a window wider than TR_RETAIN_DAYS shows
 anything at all. Pruning them on the raw boundary would silently reduce "all
 time" to one month.
 
-Aggregate counters in `sources` are deliberately NOT deleted with the raw
+Aggregate counters in `sources` are NOT deleted with the raw
 events, so long-run totals and first_seen survive pruning. Sources whose
 events are all gone AND that haven't been seen within the retention window
 are dropped too, to stop unbounded growth of that table.

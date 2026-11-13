@@ -1,4 +1,4 @@
-/* app.css v5 - reset, shell, chrome, typography.
+/* app.css - reset, shell, chrome, typography.
    Components live in components.css. Print lives in print.css. Every value
    here is a token from tokens.css; DESIGN.md says why each one is what it is. */
 
@@ -59,10 +59,9 @@ h1, h2, h3 {
 .skiplink:focus-visible { left: var(--s3); top: var(--s3); }
 
 /* ---------- shell -------------------------------------------------------
-   v4 ran a near-black rail down the left of every page and a marking strip
-   across the top. Both were chrome competing with the data. The rail now sits
-   on the canvas, separated by a hairline, and the disclaimer the strip carried
-   lives in the rail footer. */
+   The nav rail sits on the canvas colour, separated from the content by a
+   hairline, so the page chrome stays lighter than the data. The project
+   credit and disclaimer live in the rail footer. */
 
 .shell {
   display: grid;
@@ -209,7 +208,8 @@ body[data-page="/"] .modeswitch { display: flex; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
-    animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+    animation-duration: .01ms !important; animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
   }
 }

@@ -30,8 +30,9 @@ nothing on the sensor initiates a connection to it.
 
 ## Trust boundaries
 
-**Internet to sensor.** Hostile by design. Cowrie emulates a shell, captures
-what it is sent, and is expected to be probed for escapes. It runs as an
+**Internet to sensor.** Everything arriving from the internet is hostile.
+Cowrie emulates a shell, keeps what it is sent, and should be expected to be
+probed for escapes. It runs as an
 account that owns only its runtime state under `var/`, with the code, the
 configuration, the userdb and the forced-command wrapper owned by root. Its
 unit runs with no capabilities, a read-only filesystem apart from that state,
@@ -41,8 +42,8 @@ a system call filter, and a memory ceiling.
 compromised. Its output is validated before it touches the collector: log
 names must match the rotation pattern, lengths are checked against what was
 asked for, nothing is unpacked, and samples are kept only when their content
-hashes to their name. The honeypot account cannot reach the tailnet, and the
-dashboard refuses the sensor's address as well.
+hashes to their name. The honeypot account cannot reach the tailnet, and nginx
+on the collector also rejects requests from the sensor's address.
 
 **Inside the collector.** Root owns the code and the service account owns
 only the database, the spool and the pull key, so a bug in a process that
@@ -71,12 +72,11 @@ text rather than markup.
 | Text typed into a session steers a model that is later handed an export | recorded data is fenced by a per-document nonce the session could not have known, non-printing characters are escaped, and the document says outside the fence that nothing inside is an instruction |
 | Operator identity or persona detail leaks through the public repository | deployment-specific rules, addresses and persona files live outside it, in a private repository and in `/etc` |
 | A compromised package reaches the collector | dependencies install only from a lock with hashes |
-| A stage fails quietly and the site keeps showing stale data | each stage leaves a heartbeat the health view checks, and a six-hour window catches connections arriving with no logins |
+| A stage stops working without an error and the site keeps showing stale data | each stage leaves a heartbeat the health view checks, and a six-hour window catches connections arriving with no logins |
 
 ## Risks that remain
 
-These are known and accepted for now, and listed so that nobody mistakes the
-table above for a guarantee.
+The table above is not a guarantee. These gaps are known and accepted for now.
 
 - The tailnet policy is the default, which allows every node to reach every
   other. The honeypot account cannot use that, but root on a fully
@@ -96,6 +96,6 @@ table above for a guarantee.
 ## Design rules
 
 `SECURITY.md` lists the properties that a change must not break. They are
-also what the test suite defends: the retention, userdb, pull protocol,
-sample text, health and read-only tests each exist because one of these rules
-was broken once, or would have been.
+also what the test suite checks. The retention, userdb, pull protocol, sample
+text, health and read-only tests were each written after one of these rules
+was broken, or nearly broken.

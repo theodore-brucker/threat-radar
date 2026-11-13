@@ -1,4 +1,4 @@
-"""The health view has to notice each way the pipeline fails quietly.
+"""The health view has to notice each way the pipeline can fail without an error.
 
 Two of these have happened on this deployment: authentication died for
 seventeen days while connections kept arriving, and the sample fetch failed

@@ -1,24 +1,20 @@
-/* tokens.css v5 - every colour, size and space in the site, and nothing else.
+/* tokens.css - every colour, size and space in the site, and nothing else.
  *
  * DESIGN.md at the repository root is the brief these tokens implement. Read
  * it before adding a token: most "new" values are an existing step used in a
  * new place.
  *
- * Three rules the tokens encode.
- *
  * 1. One accent. --accent is the only colour that means "you can act on
  *    this": links, focus, the pressed state of a control, the primary button.
- *    Bars, lines and other non-stage data marks are ink, not accent, so a
- *    blue thing on the page is always something to click.
+ *    Bars, lines and other non-stage data marks use --mark, so anything blue
+ *    on the page can be clicked.
  *
- * 2. Stage colours are data, not decoration. The five-step escalation ramp
- *    appears only where a value is a stage. v4 drew stage 2 in the accent
- *    blue, so a stage chip and a link were the same colour; stage 2 is now a
- *    deep teal that reads as a darker step of stage 1, with the hollow/filled
- *    rule (stages 0-1 outlined, 2-4 filled) separating the two.
+ * 2. Stage colours mark stages and nothing else. Stage 2 is a deep teal, a
+ *    darker step of stage 1, so no stage shares the accent blue. The
+ *    hollow/filled rule (stages 0-1 outlined, 2-4 filled) separates 1 from 2.
  *
- * 3. One radius, one spacing scale, one type scale. Anything that is not a
- *    step below is a bug.
+ * 3. One radius, one spacing scale and one type scale. A value that is not
+ *    one of the steps below is a bug.
  *
  * LIGHT ramp against canvas #F5F7F6 / surface #FFFFFF (WCAG 2.1):
  *   stage-0 #5E6E75   4.92 / 5.30

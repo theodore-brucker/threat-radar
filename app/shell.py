@@ -1,19 +1,19 @@
 """Page shell rendering and the content security policy that goes with it.
 
-Two jobs, both of which exist so the site can be published under a path on
-theobrucker.us rather than only served at the root of the Pi.
+It does two things so the site can be published under a path on
+theobrucker.us as well as served at the root of the Pi.
 
 1.  Mount prefix. Every asset link and the boot script carry a __TR_BASE__
     placeholder that is replaced with TR_URL_PREFIX at request time. The
     client resolves the same prefix independently from its own module URL, so
     the router, the API calls and the entity links all agree without a build
-    step. Default is the empty string, which is exactly what the LAN
-    deployment already serves.
+    step. The default is the empty string, which serves the site at the root
+    as the LAN deployment does.
 
 2.  Content security policy. The shell carries one inline script, the
     pre-paint theme resolver, and its sha256 is computed from the file itself
-    at import time. That means script-src can exclude 'unsafe-inline' without
-    the policy going stale the next time the shell is edited.
+    at import time, so script-src can exclude 'unsafe-inline' and the policy
+    stays correct when the shell is edited.
 
 These routes are registered ahead of the ones in routers/site.py, which keeps
 the change to a single import in main.py and leaves the API surface alone.

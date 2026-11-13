@@ -1,4 +1,4 @@
-"""The userdb generator, end to end, against the kind of data it really gets.
+"""The userdb generator, end to end, against the kind of data it gets.
 
 This script's output decides whether the sensor can authenticate anyone. An
 earlier version wrote a line with an empty password and the sensor answered

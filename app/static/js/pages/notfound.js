@@ -3,7 +3,7 @@
  * The server answers these with status 404 and the same shell, so a crawler
  * or a link checker sees the truth while a reader still gets the site around
  * the message. The page says what was asked for, why it might be missing, and
- * offers the three ways forward a reader actually takes.
+ * offers the three ways forward a reader takes.
  */
 
 import { h, currentPath, routeLink, icon, pageState } from "../core.js";

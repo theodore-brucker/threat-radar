@@ -1,10 +1,10 @@
-/* pages/overview.js v5 - two audiences, one dataset.
+/* pages/overview.js - the overview, in two modes over the same data.
  *
- * Summary mode answers three questions in order: how far do intruders get,
- * is that moving, and what should I take away. The escalation funnel is the
- * hero because it is the one thing this site is about; v4 opened with three
- * number cards that restated the funnel's first rows, so they are folded into
- * a line of trends under it. Analyst mode keeps the dense original.
+ * Summary mode, for a non-specialist: the escalation funnel first, a line of
+ * trends against the prior period under it, then the map, the credential
+ * themes, the busiest networks and the daily volume. Analyst mode shows the
+ * same data denser: figures, the clickable escalation rail, the map and the
+ * sessions worth reading.
  */
 
 import {
@@ -49,8 +49,8 @@ function personaNote(t) {
   ]);
 }
 
-/* Only a problem earns a banner. A healthy sensor is the normal state and the
-   rail footer already says so; v4 drew a "Sensor healthy" box on every visit. */
+/* A banner only for a fault. The rail footer already shows a healthy status,
+   and a lagging pull raises the bar across the top of every page. */
 function healthBanner(hl) {
   // A lagging pull already raises the bar across the top of every page, so
   // the overview only adds a banner for a fault, where it has more to say.
@@ -74,9 +74,9 @@ function pagehead(d) {
   return h("div", { class: "pagehead" }, [
     h("h2", { text: "What happens to a server left open on the public internet" }),
     h("p", { text:
-      "This is a decoy SSH server, deliberately exposed and dressed up as a machine worth "
-      + "breaking into. Nothing real runs on it, so everything that connects is uninvited, "
-      + "and every attempt is recorded." }),
+      "This is a decoy SSH server set up to look like a machine worth breaking into. "
+      + "Nothing real runs on it, so everything that connects is uninvited, and every "
+      + "attempt is recorded." }),
     h("p", { class: "sub2", text:
       `${num(d.events_total)} recorded events from ${num(d.sources_total)} addresses `
       + `in ${num(d.countries)} countries${span}.` }),
@@ -158,8 +158,7 @@ async function execView(d) {
          goals.length ? takeaway([
            "The most common target was ",
            { b: (GOAL_NAMES[goals[0].tag] || goals[0].tag).toLowerCase() },
-           ", which says more about what attackers hope to monetise than about the "
-             + "server they think they have found.",
+           ".",
          ]) : null]),
 
       panel("Who sends the most",
@@ -189,17 +188,17 @@ async function execView(d) {
              h("li", {}, [h("b", { text: `${r.day}: ` }), r.spike.headline])))
          : null,
        takeaway([
-         "A swing in volume is usually one operator changing behaviour rather than a broad "
-           + "shift, and the chart marks any day that breaks its own baseline.",
+         "Most swings in volume come from one network operator changing what it does. "
+           + "The chart marks any day that is well above its own recent median.",
        ])]),
 
     panel("What this shows", null, [
       h("p", { class: "lede", text:
         `About ${num(gotIn)} of ${num(odds.connections || 0)} connections reached a working shell. `
-        + "Automated pressure on an exposed service is constant and cheap, most of it fails at "
-        + "the password prompt, and the small share that gets through moves straight to "
-        + "installing something. Credential quality and how much is exposed decide which side "
-        + "of that line a real server lands on." }),
+        + "Almost all of the rest were automated password guesses that failed. Sessions "
+        + "that did get in usually tried to download and run a file within seconds. On a "
+        + "real server, strong passwords or key-only login would have stopped nearly all "
+        + "of them at the first step." }),
     ]),
   ]);
 }
@@ -260,10 +259,8 @@ async function analystView(d) {
 }
 
 /* ---------------- shared chart ----------------
-   Built entirely with createElementNS. v3 assigned innerHTML on a <defs>
-   node to draw the hatch pattern, which was the last raw markup assignment in
-   the codebase and the one thing that made the no-markup rule a convention
-   rather than a property of the helpers. */
+   Built entirely with createElementNS, including the hatch pattern in <defs>,
+   so the chart never assigns markup. */
 
 function activityChart(rows, outages, personas) {
   if (!rows.length) {
@@ -293,7 +290,7 @@ function activityChart(rows, outages, personas) {
   defs.appendChild(pat);
   el.appendChild(defs);
 
-  // Outage windows drawn as a labelled gap rather than quietly averaged in.
+  // Outage windows are drawn as a labelled gap so they are not mistaken for quiet days.
   const index = {};
   rows.forEach((r, i) => { index[r.day] = i; });
   (outages || []).forEach((o) => {
