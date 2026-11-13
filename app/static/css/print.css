@@ -1,10 +1,7 @@
-/* print.css v4
+/* print.css v5
  *
- * v3 hid the nav and the side panel and stopped there. Two things were wrong
- * with that. Every table kept max-height:60vh with overflow:auto, so a printed
- * table was clipped to one screen of rows. And the classification strip was
- * white text on an ink background, which disappears entirely when a browser
- * prints without backgrounds, on a page whose top line is a marking.
+ * Tables print in full rather than clipped to one screen, the light palette
+ * is forced, and the page says what it is a print of.
  *
  * Loaded with media="print", so none of this costs anything on screen.
  */
@@ -22,23 +19,16 @@ html, body {
 /* Force the light palette. A dark-mode screenshot into a printer is an ink
    cartridge and an unreadable page. */
 :root {
-  --canvas: #fff; --surface: #fff; --surface-sunk: #fff; --surface-rail: #fff;
+  --canvas: #fff; --surface: #fff; --surface-sunk: #fff;
   --ink: #000; --ink-soft: #222; --ink-dim: #444;
   --line: #999; --line-strong: #666; --track: #ddd;
-  --accent: #123763; --accent-tint: #fff; --accent-line: #999;
+  --accent: #163B77; --accent-tint: #fff; --mark: #333; --mark-tint: #eee;
   --alert: #7a1222; --alert-tint: #fff; --warn: #6b4800; --warn-tint: #fff;
   --ok: #17513a; --ok-tint: #fff;
-  --stage-0: #555; --stage-1: #1D6A66; --stage-2: #1A4B8C;
+  --stage-0: #555; --stage-1: #1D6A66; --stage-2: #0D4A46;
   --stage-3: #8A5D00; --stage-4: #A6192E;
   --map-ocean: #fff; --map-land: #e6e6e6; --map-edge: #888; --map-grat: #eee;
   --shadow-pop: none;
-}
-
-/* The marking prints as text with a rule, so it survives backgrounds off. */
-.classbar {
-  background: none !important; color: #000 !important;
-  border-bottom: 2px solid #000; height: auto; padding: 0 0 2mm; margin-bottom: 4mm;
-  justify-content: flex-start; font-size: 8pt; letter-spacing: .14em;
 }
 
 .nav, .topbar .seg-ctl, .topbar select, .topbar .ctl-label,
@@ -56,14 +46,11 @@ html, body {
 
 /* A printed page has to say what it is a print of. */
 .topbar::after {
-  content: "Threat Radar  ·  " attr(data-print-scope);
+  content: "Threat Radar, " attr(data-print-scope);
   margin-left: auto; font-family: var(--font-mono); font-size: 8pt; color: #000;
 }
 
-.panel {
-  break-inside: avoid; border: 1px solid #999; margin-bottom: 4mm;
-  padding: 3mm; background: none;
-}
+.panel { break-inside: avoid; margin-bottom: 6mm; }
 .panel > .phead h2 { font-size: 11pt; }
 
 /* Tables print in full. This is the fix that matters most. */
@@ -90,7 +77,8 @@ pre.code code, pre.cmd code { white-space: pre-wrap !important; }
 pre.cmd.clamped code { max-height: none !important; overflow: visible !important; }
 .cmdbar, details.export { display: none !important; }
 
-.empty { border: 1px solid #ccc; background: none; }
+.state { border: 1px solid #ccc; background: none; }
+.funnel.reveal .fill { animation: none; }
 .skel-bar, .skel-row { display: none; }
 
 /* Where a link goes matters on paper, but only for external ones. */

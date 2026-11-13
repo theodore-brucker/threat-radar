@@ -6,7 +6,7 @@
  * pre-paint theme resolver, which the server pins by hash.
  */
 
-import { wireShell, render, url, h } from "./core.js";
+import { wireShell, render, url, h, icon } from "./core.js";
 import { mountOmnibar } from "./omnibar.js";
 import { mountHovercards } from "./hovercard.js";
 import { mountTheme } from "./theme.js";
@@ -20,7 +20,7 @@ mountKeys();
 render();
 
 /* Sensor health. A dot in the rail is not enough when every figure on the
-   page is stale, so a degraded sensor also raises a bar under the marking. */
+   page is stale, so a degraded sensor also raises a bar across the top. */
 fetch(url("/api/v1/health"))
   .then((r) => r.json())
   .then((b) => {
@@ -28,18 +28,20 @@ fetch(url("/api/v1/health"))
     const dot = document.getElementById("health-dot");
     const txt = document.getElementById("health-text");
     dot.className = `dot ${d.status === "fault" ? "fault" : d.status === "warn" ? "stale" : "live"}`;
-    txt.textContent = d.status === "fault" ? "sensor fault"
-      : d.status === "warn" ? "data behind" : "sensor healthy";
+    txt.textContent = d.status === "fault" ? "Sensor fault"
+      : d.status === "warn" ? "Data is behind" : "Sensor reporting";
     document.getElementById("coverage").textContent =
-      d.last_event_day ? `through ${d.last_event_day}` : "";
+      d.last_event_day ? `Data through ${d.last_event_day}` : "";
 
     const bar = document.getElementById("stalebar");
     if (d.status === "ok") { bar.hidden = true; return; }
     bar.className = `stalebar ${d.status}`;
-    bar.replaceChildren(h("span", { text: d.message || "Sensor health is degraded." }));
+    bar.replaceChildren(h("span", {
+      text: d.message || "The sensor is not reporting normally, so recent figures may be incomplete.",
+    }));
     bar.hidden = false;
   })
   .catch(() => {
     const txt = document.getElementById("health-text");
-    if (txt) txt.textContent = "health unknown";
+    if (txt) txt.textContent = "Sensor status unavailable";
   });

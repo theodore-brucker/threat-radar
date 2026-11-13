@@ -1,12 +1,6 @@
-/* rail.js v4 - the funnel, two ways.
+/* rail.js v5 - the funnel, two ways.
  *
- * Every class emitted here now has a rule in components.css. In v3 the
- * analyst rail emitted .rail, .segs, .seg, .drops and .rail-note, none of
- * which were styled, so it rendered as run-on text; and funnelExec emitted
- * .fstep inside a .funnel that the payloads work had since redefined as a
- * four column grid, which crushed every bar to a stub.
- *
- * Executive mode: proportional bars plus the odds restated in words. "1 in
+ * Summary mode: proportional bars plus the odds restated in words. "1 in
  * 2,000 connections ends with malware" is the sentence someone repeats in a
  * meeting. Analyst mode: log scaled widths so the tail stays visible, and the
  * whole rail doubles as a stage filter.
@@ -21,7 +15,7 @@ const EXEC_LABELS = {
   transferred: ["Moved a file", "Uploaded or downloaded something"],
 };
 
-export function funnelExec(rail, odds) {
+export function funnelExec(rail, odds, { reveal = false } = {}) {
   const stages = (rail.stages || []).filter((s) => s.unit === "sessions");
 
   const steps = stages.map((s, i) => {
@@ -37,36 +31,36 @@ export function funnelExec(rail, odds) {
 
   const samples = (rail.stages || []).filter((s) => s.unit === "samples");
   const sampleLine = samples.length
-    ? h("p", { class: "sub2", style: "margin-top:14px",
-        text: `${num(samples[0].count)} unique malware samples kept from those transfers`
-          + (samples[1] ? `, ${num(samples[1].count)} shared back to VirusTotal.` : ".") })
+    ? h("p", { class: "takeaway",
+        text: `Those transfers left ${num(samples[0].count)} unique malware samples`
+          + (samples[1] ? `, and ${num(samples[1].count)} were new enough to share back to VirusTotal.` : ".") })
     : null;
 
   const oddsEl = h("div", { class: "odds" }, [
     odds.login ? h("div", {}, [
       h("b", { text: `1 in ${num(odds.login)}` }),
-      h("span", { text: "connections guesses a working login" }),
+      h("span", { text: "connections guessed a working login" }),
     ]) : null,
     odds.shell ? h("div", {}, [
       h("b", { text: `1 in ${num(odds.shell)}` }),
-      h("span", { text: "reaches a shell and runs commands" }),
+      h("span", { text: "reached a shell and ran commands" }),
     ]) : null,
     odds.malware ? h("div", { class: "alarm" }, [
       h("b", { text: `1 in ${num(odds.malware)}` }),
-      h("span", { text: "ends with a file moved onto the machine" }),
+      h("span", { text: "ended with a file moved onto the machine" }),
     ]) : null,
   ]);
 
   return h("div", {}, [
-    funnel(steps),
-    sampleLine,
+    funnel(steps, { reveal }),
     oddsEl,
     takeaway([
-      "Almost everything reaching an internet-facing machine is automated and stops at the password prompt. ",
-      "The risk is the ",
+      "Almost everything that reaches an internet-facing machine is automated and stops at "
+        + "the password prompt. The risk is the ",
       { alarm: `${num(odds.transferred_sessions || 0)} connections` },
       " that got far enough to put a file on disk.",
     ]),
+    sampleLine,
   ]);
 }
 
@@ -92,13 +86,14 @@ export function railFull(data, { interactive = true } = {}) {
       class: "seg",
       type: "button",
       style: `flex:0 1 ${w[i].toFixed(2)}%;--stage:var(${STAGE_COLORS[stage]})`,
-      "aria-pressed": String(interactive && state.minStage === stage),
+      // Stage 0 is every source, so it is the unfiltered state, not a filter.
+      "aria-pressed": String(interactive && state.minStage !== 0 && state.minStage === stage),
       title: interactive
-        ? `Filter the map and tables to sources that reached ${s.label.toLowerCase()}`
+        ? `Show only sources that reached ${s.label.toLowerCase()}`
         : s.label,
     }, [
       h("span", { class: "n", text: num(s.count) }),
-      h("span", { class: "k", text: `${i} \u00b7 ${s.label}` }),
+      h("span", { class: "k", text: `${i}. ${s.label}` }),
       h("span", { class: "u", text: s.unit }),
     ]);
     if (interactive && i <= 4) {
@@ -106,7 +101,7 @@ export function railFull(data, { interactive = true } = {}) {
         state.minStage = state.minStage === i ? 0 : i;
         emit();
         segs.querySelectorAll(".seg").forEach((b, j) =>
-          b.setAttribute("aria-pressed", String(state.minStage === j)));
+          b.setAttribute("aria-pressed", String(state.minStage !== 0 && state.minStage === j)));
       });
     }
     return btn;
@@ -117,7 +112,7 @@ export function railFull(data, { interactive = true } = {}) {
       title: s.retained_pct === null || s.retained_pct === undefined
         ? "" : `${s.retained_pct}% of the previous stage carried forward` }, [
       s.retained_pct === null || s.retained_pct === undefined
-        ? (i === 0 ? "baseline" : "unit changes here")
+        ? (i === 0 ? "All sources" : "Counted in samples from here")
         : `${s.retained_pct}% carried forward`,
     ])));
 
@@ -156,7 +151,7 @@ export function railStrip(data, { onChange } = {}) {
     return b;
   });
   const clear = h("button", {
-    type: "button", class: "clear", text: "clear filter",
+    type: "button", class: "clear", text: "Clear filter",
     onclick: () => {
       state.minStage = 0;
       sync();

@@ -10,6 +10,10 @@
  *    outlined by whether the source got inside.
  */
 
+import { icon } from "./icons.js";
+
+export { icon };
+
 /* ---------- mount point --------------------------------------------------
    The site can be served at / or under a prefix such as /radar. The prefix is
    taken from this module's own URL, so it is correct without a build step and
@@ -67,8 +71,7 @@ export function setDensity(d) {
   state.density = d;
   localStorage.setItem("tr.density", d);
   document.body.dataset.density = d;
-  const btn = document.getElementById("density-toggle");
-  if (btn) btn.textContent = d === "compact" ? "compact" : "roomy";
+  paintDensity();
   if (document.getElementById("view")) raf(() => fitTables());
 }
 
@@ -103,16 +106,43 @@ const cache = new Map();
 
 export function windowLabel() {
   if (state.days >= ALL_TIME) return "all time";
-  if (state.days === 1) return "last 24 hours";
-  return `last ${state.days} days`;
+  if (state.days === 1) return "the last 24 hours";
+  return `the last ${state.days} days`;
+}
+
+/* An API failure that knows what kind of failure it was, so a page can say
+   "nothing recorded for this address" for a 404 and "the server could not
+   build this view" for a 500, instead of printing the status line. status is
+   0 when the request never got an answer at all. */
+export class ApiError extends Error {
+  constructor(status, path, detail) {
+    super(detail || (status ? `HTTP ${status}` : "no response"));
+    this.name = "ApiError";
+    this.status = status;
+    this.path = path;
+    this.detail = detail || "";
+  }
+  get notFound() { return this.status === 404; }
 }
 
 export async function api(path, { fresh = false } = {}) {
   const rel = path.includes("?") ? `${path}&days=${state.days}` : `${path}?days=${state.days}`;
   if (!fresh && cache.has(rel)) return cache.get(rel);
-  const res = await fetch(url(rel), { headers: { Accept: "application/json" } });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText} on ${path}`);
-  const body = await res.json();
+  let res;
+  try {
+    res = await fetch(url(rel), { headers: { Accept: "application/json" } });
+  } catch (err) {
+    throw new ApiError(0, path, "The request did not reach the server.");
+  }
+  if (!res.ok) {
+    let detail = "";
+    try { const b = await res.json(); detail = b && typeof b.detail === "string" ? b.detail : ""; }
+    catch (err) { /* not JSON: the status is all there is */ }
+    throw new ApiError(res.status, path, detail);
+  }
+  let body;
+  try { body = await res.json(); }
+  catch (err) { throw new ApiError(res.status, path, "The server answered with something that is not JSON."); }
   const data = body && body.data !== undefined ? body.data : body;
   cache.set(rel, data);
   return data;
@@ -152,6 +182,12 @@ export function bytes(n) {
   if (b < 1024) return `${b} B`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
   return `${(b / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/* "Hetzner Online GmbH, DE". Commas rather than a dot leader, and nothing at
+   all when neither half is known. */
+export function place(...parts) {
+  return parts.filter(Boolean).join(", ");
 }
 
 /* ---------- dom ---------- */
@@ -226,16 +262,24 @@ export function copyText(value) {
   });
 }
 
+/* A copy button names the action, then confirms it with the same verb:
+   "Copy" becomes "Copied" with a tick, and a refusal says what to do. */
+function setLabel(btn, name, text) {
+  btn.replaceChildren(icon(name), document.createTextNode(text));
+}
+
 function wireCopy(btn, getText, restore) {
+  setLabel(btn, "copy", restore);
   btn.addEventListener("click", () => {
     copyText(getText()).then(() => {
-      btn.textContent = "copied";
-      setTimeout(() => { btn.textContent = restore; }, 1200);
+      setLabel(btn, "check", "Copied");
+      btn.setAttribute("data-done", "");
+      setTimeout(() => { setLabel(btn, "copy", restore); btn.removeAttribute("data-done"); }, 1400);
     }).catch(() => {
-      btn.textContent = "copy blocked";
-      btn.title = "The browser refused the clipboard. Serve the site over https "
-        + "or select the text by hand.";
-      setTimeout(() => { btn.textContent = restore; }, 2400);
+      setLabel(btn, "triangle-alert", "Clipboard blocked");
+      btn.title = "The browser refused the clipboard on this connection. Select the "
+        + "text and copy it by hand, or open the site over https.";
+      setTimeout(() => { setLabel(btn, "copy", restore); }, 2600);
     });
   });
   return btn;
@@ -263,7 +307,7 @@ export function panel(title, sub, body, _opts) {
 export function stats(items) {
   return h("div", { class: "stats" }, items.map((i) =>
     h("div", { class: "stat" }, [
-      h("div", { class: `n ${i.tone || ""}`.trim(), text: i.value }),
+      h("div", { class: `n ${i.tone === "bad" ? "bad" : ""}`.trim(), text: i.value }),
       h("div", { class: "k", text: i.label }),
     ])));
 }
@@ -293,30 +337,88 @@ export function stageTag(stage, { short = false } = {}) {
   ]);
 }
 
-/* ---------- empty states ----------
-   An empty panel says what would have been here and, where the cause is the
-   window selector, offers the fix rather than leaving the reader stuck. */
+/* ---------- empty, error and not-found states --------------------------
+   One shape for all three: a sentence saying what happened, a sentence
+   saying why or what it means, and the action that fixes it. An empty view
+   whose cause is the window selector offers to widen it. */
 
-export function emptyState(message, { hint, widen } = {}) {
-  const node = h("div", { class: "empty" }, [
-    h("b", { text: message }),
-    hint ? h("span", { text: hint }) : null,
+function stateBox(cls, iconName, title, text, actions) {
+  return h("div", { class: `state ${cls}`.trim(), role: cls.includes("error") ? "alert" : null }, [
+    iconName ? icon(iconName, { size: cls.includes("page") ? 28 : 18 }) : null,
+    h("div", {}, [
+      h("b", { text: title }),
+      text ? h("p", { text }) : null,
+      actions && actions.length ? h("div", { class: "actions" }, actions) : null,
+    ]),
   ]);
-  if (widen && state.days < ALL_TIME) {
-    const next = state.days < 7 ? 7 : state.days < 30 ? 30 : ALL_TIME;
-    node.appendChild(h("button", {
-      type: "button",
-      text: next >= ALL_TIME ? "Widen to all time" : `Widen to ${next} days`,
-      onclick: () => {
-        setDays(next);
-        const sel = document.getElementById("window-select");
-        if (sel) sel.value = String(next);
-        clearCache();
-        render();
-      },
-    }));
+}
+
+export function widenButton() {
+  if (state.days >= ALL_TIME) return null;
+  const next = state.days < 7 ? 7 : state.days < 30 ? 30 : ALL_TIME;
+  return h("button", {
+    type: "button",
+    text: next >= ALL_TIME ? "Show all time" : `Show the last ${next} days`,
+    onclick: () => {
+      setDays(next);
+      const sel = document.getElementById("window-select");
+      if (sel) sel.value = String(next);
+      clearCache();
+      render();
+    },
+  });
+}
+
+export function emptyState(message, { hint, widen, plain } = {}) {
+  return stateBox(plain ? "plain" : "", null, message, hint,
+    [widen ? widenButton() : null].filter(Boolean));
+}
+
+/* What went wrong, in the reader's terms, with the raw status kept as a
+   detail line for whoever has to fix it. */
+export function describeError(err) {
+  const s = err && err.status !== undefined ? err.status : -1;
+  if (s === 0) {
+    return ["Threat Radar is not answering.",
+      "The page could not reach its server. Check your connection, or try again "
+      + "in a minute if the server is restarting."];
   }
-  return node;
+  if (s === 404) {
+    return ["Nothing is recorded here.", "The server has no data at this address."];
+  }
+  if (s === 400) {
+    return ["That value is not one this view understands.",
+      err.detail ? `The server said: ${err.detail}.` : "Check the address and try again."];
+  }
+  if (s === 503) {
+    return ["The database is not available right now.",
+      "It is usually being rebuilt or pruned, which takes a few minutes. Try again shortly."];
+  }
+  if (s >= 500) {
+    return ["The server hit an error building this view.",
+      "Trying again often works. If it keeps happening, the web service log on the "
+      + "server will have the cause."];
+  }
+  return ["This view could not be loaded.",
+    "Something in the page failed before it could draw. Reloading usually clears it."];
+}
+
+export function errorState(err, { retry = () => { clearCache(); render(); } } = {}) {
+  const [title, text] = describeError(err);
+  const box = stateBox("error", "triangle-alert", title, text, [
+    h("button", { type: "button", onclick: retry }, [icon("refresh-cw"), "Try again"]),
+  ]);
+  const detail = err && err.path !== undefined
+    ? `${err.status ? `HTTP ${err.status}` : "No response"} from ${err.path}`
+      + `${err.detail ? `: ${err.detail}` : ""}`
+    : String((err && err.message) || err || "");
+  box.querySelector("div").appendChild(h("p", { class: "detail", text: detail }));
+  return box;
+}
+
+/* A full-page state, used for 404 and for an entity nobody has seen. */
+export function pageState({ iconName = "compass", title, text, actions = [] }) {
+  return stateBox("page", iconName, title, text, actions);
 }
 
 /* ---------- tables ------------------------------------------------------
@@ -390,7 +492,7 @@ export function dataTable({ cols, rows, render: renderRow, empty, limit = 50, la
       if (j === i) th.setAttribute("aria-sort", sortDir === 1 ? "ascending" : "descending");
       else th.removeAttribute("aria-sort");
       const mark = th.querySelector(".sortmark");
-      if (mark) mark.textContent = j === i ? (sortDir === 1 ? "\u25B2" : "\u25BC") : "\u25BE";
+      if (mark) mark.replaceChildren(icon(j === i ? (sortDir === 1 ? "chevron-up" : "chevron-down") : "chevrons-up-down", { size: 14 }));
     });
     applyLimit();
   };
@@ -400,12 +502,12 @@ export function dataTable({ cols, rows, render: renderRow, empty, limit = 50, la
       class: [c.num ? "num" : "", "sortable"].join(" ").trim(),
       scope: "col",
       tabindex: "0",
-      title: `sort by ${c.label}`,
+      title: `Sort by ${c.label}`,
       onclick: () => sortBy(i),
       onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sortBy(i); } },
     }, [
       h("span", { text: c.label }),
-      h("i", { class: "sortmark", text: "\u25BE" }),
+      h("span", { class: "sortmark" }, [icon("chevrons-up-down", { size: 14 })]),
     ]);
     headRow.appendChild(th);
   });
@@ -428,21 +530,21 @@ export function dataTable({ cols, rows, render: renderRow, empty, limit = 50, la
     const shown = showAll ? records.length : Math.min(limit, records.length);
     countEl.textContent = shown === records.length
       ? `${num(records.length)} row${records.length === 1 ? "" : "s"}`
-      : `showing ${num(shown)} of ${num(records.length)}`;
+      : `Showing ${num(shown)} of ${num(records.length)}`;
     const first = records.find((r) => !r.tr.hidden);
     records.forEach((r) => r.tr.setAttribute("tabindex", "-1"));
     if (first) first.tr.setAttribute("tabindex", "0");
   }
 
   const copyBtnEl = wireCopy(
-    h("button", { type: "button", class: "quiet", title: "copy the visible rows as TSV", text: "copy" }),
+    h("button", { type: "button", class: "quiet", title: "Copy the visible rows as tab-separated text" }),
     () => {
       const head = cols.map((c) => c.label).join("\t");
       const rowsOut = records.filter((r) => !r.tr.hidden)
         .map((r) => [...r.tr.children].map(cellText).join("\t")).join("\n");
       return `${head}\n${rowsOut}`;
     },
-    "copy");
+    "Copy rows");
 
   const table = h("table", { "aria-label": label || undefined }, [thead, tbody]);
   const wrap = h("div", { class: "tbl-wrap" }, [table]);
@@ -489,28 +591,25 @@ export function table(cols, rows, renderRow, emptyText) {
 
 /* Direction is neutral unless the caller says which direction is bad. More
    scanning traffic against a honeypot is weather, not an incident. */
-export function trendEl(t, { alarmOn } = {}) {
+/* "Connections 12% above the prior period", with a trend icon. Direction is
+   neutral unless the caller names the direction that is bad. */
+export function trendEl(label, t, { alarmOn } = {}) {
   if (!t || t.change_pct === null || t.change_pct === undefined) {
-    return h("div", { class: "trend", text: "no comparable prior period" });
+    return h("li", { class: "trend" }, [
+      icon("minus", { size: 14 }), h("b", { text: label }), "no earlier period to compare",
+    ]);
   }
-  const arrow = t.direction === "up" ? "\u25B2" : t.direction === "down" ? "\u25BC" : "\u2013";
+  const name = t.direction === "up" ? "trending-up" : t.direction === "down" ? "trending-down" : "minus";
   const word = t.direction === "flat"
-    ? "level with"
-    : `${Math.abs(t.change_pct)}% ${t.direction === "up" ? "above" : "below"}`;
+    ? "level with the prior period"
+    : `${Math.abs(t.change_pct)}% ${t.direction === "up" ? "above" : "below"} the prior period`;
   const tone = alarmOn && t.direction === alarmOn ? " alarm" : "";
-  return h("div", { class: `trend${tone}` }, [
-    h("i", { class: "arrow", text: arrow }),
-    ` ${word} the prior period`,
-  ]);
+  return h("li", { class: `trend${tone}` }, [icon(name, { size: 14 }), h("b", { text: label }), word]);
 }
 
-export function signalCard({ label, value, trend, note, alarmOn }) {
-  return h("div", { class: "signal-card" }, [
-    h("div", { class: "k", text: label }),
-    h("div", { class: "n", text: value }),
-    trend ? trendEl(trend, { alarmOn }) : null,
-    note ? h("p", { text: note }) : null,
-  ]);
+export function trendLine(items) {
+  return h("ul", { class: "trendline", "aria-label": "Change against the prior period" },
+    items.map((it) => trendEl(it.label, it.trend, { alarmOn: it.alarmOn })));
 }
 
 export function takeaway(parts) {
@@ -537,12 +636,12 @@ export function hbars(rows, { alarmFirst = false } = {}) {
 
 /* A funnel is a sequence of narrowing counts. Counts sit outside the fill,
    because in light mode no stage colour carries white text at 4.5:1. */
-export function funnel(steps) {
+export function funnel(steps, { reveal = false } = {}) {
   const top = Math.max(1, steps[0] ? steps[0].value : 1);
-  return h("div", { class: "funnel" }, steps.map((s, i) => {
+  return h("div", { class: `funnel${reveal ? " reveal" : ""}` }, steps.map((s, i) => {
     const prev = i === 0 ? null : steps[i - 1].value;
     const share = prev ? (prev === 0 ? 0 : (s.value / prev) * 100) : null;
-    return h("div", { class: "funnel-step", style: `--stage:var(${s.color || "--accent"})` }, [
+    return h("div", { class: "funnel-step", style: `--stage:var(${s.color || "--mark"});--i:${i}` }, [
       h("div", { class: "fl" }, s.sub
         ? [h("b", { text: s.label }), h("span", { text: s.sub })]
         : [h("b", { text: s.label })]),
@@ -573,17 +672,19 @@ export function cmdBlock(text, { clampLines = true } = {}) {
   if (long || value.length > 120) {
     const expand = long && clampLines
       ? h("button", {
-          type: "button", class: "quiet", text: "expand",
+          type: "button", class: "quiet", text: "Show all",
+          "aria-expanded": "false",
           onclick: (e) => {
             const on = pre.classList.toggle("clamped");
-            e.target.textContent = on ? "expand" : "collapse";
+            e.currentTarget.textContent = on ? "Show all" : "Show less";
+            e.currentTarget.setAttribute("aria-expanded", String(!on));
           },
         })
       : null;
     bits.push(h("div", { class: "cmdbar" }, [
       expand,
       copyBtn(value),
-      h("span", { class: "len", text: `${num(value.length)} chars` }),
+      h("span", { class: "len", text: `${num(value.length)} characters` }),
     ]));
   }
   return h("div", {}, bits);
@@ -658,10 +759,17 @@ export function routeLink(route, label, cls) {
   });
 }
 
+/* "<- Sources": where the reader came from, as a link with an arrow. */
+export function backLink(route, label) {
+  const a = routeLink(route, "", "backlink");
+  a.replaceChildren(icon("arrow-left", { size: 14 }), document.createTextNode(label));
+  return a;
+}
+
 export function copyBtn(value) {
   return wireCopy(
-    h("button", { class: "copy", type: "button", title: "copy to clipboard", text: "copy" }),
-    () => value, "copy");
+    h("button", { class: "copy", type: "button", title: "Copy to the clipboard" }),
+    () => value, "Copy");
 }
 
 /* ---------- export -------------------------------------------------------
@@ -687,10 +795,10 @@ export function exportControl(type, id) {
 
   const size = h("span", { class: "export-size", role: "status" });
   const copy = wireCopy(
-    h("button", { type: "button", class: "primary", disabled: true, text: "copy for a model" }),
-    () => text || "", "copy for a model");
-  const md = h("a", { class: "mono", download: true, text: "save .md" });
-  const json = h("a", { class: "mono", download: true, text: "save .json" });
+    h("button", { type: "button", class: "primary", disabled: true }),
+    () => text || "", "Copy for an AI model");
+  const md = h("a", { download: true }, [icon("file-down"), "Download Markdown"]);
+  const json = h("a", { download: true }, [icon("file-down"), "Download JSON"]);
   const ask = h("input", { type: "checkbox" });
   ask.checked = brief;
 
@@ -698,7 +806,7 @@ export function exportControl(type, id) {
     const mine = ++seq;
     text = null;
     copy.disabled = true;
-    size.textContent = "building";
+    size.textContent = "Building the document";
     md.setAttribute("href", link("md", true));
     json.setAttribute("href", link("json", true));
     try {
@@ -712,7 +820,10 @@ export function exportControl(type, id) {
       size.textContent = `${bytes(new Blob([body]).size)}, about ${num(Math.ceil(body.length / 400) * 100)} tokens`;
       copy.disabled = false;
     } catch (err) {
-      if (mine === seq) size.textContent = "export unavailable";
+      if (mine === seq) {
+        size.textContent = "The export could not be built. Close and reopen this menu to try again.";
+        text = null;
+      }
     }
   }
 
@@ -731,12 +842,12 @@ export function exportControl(type, id) {
       box.querySelector("summary").focus();
     },
   }, [
-    h("summary", { title: "export this record for a language model (x)", text: "export" }),
+    h("summary", { title: "Export this record for an AI model (x)" }, [icon("file-down", { size: 14 }), "Export"]),
     h("div", { class: "export-menu" }, [
-      h("p", { text: "This record as one document for an AI analyst: what the sensor is, "
-        + "the evidence, and what was left out." }),
+      h("p", { text: "This record as one document an AI analyst can read: what the sensor "
+        + "is, the evidence, and what was left out." }),
       h("div", { class: "export-row" }, [copy, size]),
-      h("label", { class: "export-ask" }, [ask, " end with a request for analysis and recommendations"]),
+      h("label", { class: "export-ask" }, [ask, " End with a request for analysis and recommendations"]),
       h("div", { class: "export-row" }, [md, json]),
     ]),
   ]);
@@ -745,19 +856,18 @@ export function exportControl(type, id) {
 
 export function vtLink(sha, label) {
   return h("a", {
-    class: "mono", target: "_blank", rel: "noreferrer noopener",
+    class: label ? null : "mono", target: "_blank", rel: "noreferrer noopener",
     href: `https://www.virustotal.com/gui/file/${encodeURIComponent(sha)}`,
-    title: "open the VirusTotal report",
-    text: label || mid(sha, 12, 6),
-  });
+    title: "Open the VirusTotal report in a new tab",
+  }, [label || mid(sha, 12, 6), " ", icon("external-link", { size: 14 })]);
 }
 
 /* ---------- sparkline ---------- */
 
 export function spark(rows, { width = 560, height = 56, key = "events" } = {}) {
   if (!rows || rows.length < 2) {
-    return emptyState("Not enough days in this window to draw.", {
-      hint: "A daily line needs at least two days of coverage.",
+    return emptyState("Not enough days to draw a line.", {
+      hint: "A daily line needs at least two days of activity in the window.",
       widen: true,
     });
   }
@@ -768,7 +878,7 @@ export function spark(rows, { width = 560, height = 56, key = "events" } = {}) {
   const el = svg("svg", {
     viewBox: `0 0 ${width} ${height}`, class: "spark",
     preserveAspectRatio: "none", role: "img",
-    "aria-label": `daily activity, peak ${max}`,
+    "aria-label": `Daily activity, peak ${max}`,
   });
   el.appendChild(svg("polyline", {
     points: `0,${height} ${pts.join(" ")} ${width},${height}`, class: "spark-fill",
@@ -780,7 +890,7 @@ export function spark(rows, { width = 560, height = 56, key = "events" } = {}) {
   wrap.appendChild(h("div", { class: "sub2 sparkcap" }, [
     entity("day", rows[0].day, rows[0].day), " to ",
     entity("day", rows[rows.length - 1].day, rows[rows.length - 1].day),
-    ` \u00b7 peak ${num(peak[key])} on `, entity("day", peak.day, peak.day),
+    `. Busiest day ${num(peak[key])} events, on `, entity("day", peak.day, peak.day), ".",
   ]));
   return wrap;
 }
@@ -805,12 +915,12 @@ window.addEventListener("resize", () => {
   fitTimer = setTimeout(() => fitTables(), 150);
 });
 
-export function skeleton(rows = 5) {
-  return h("div", { class: "skel" }, [
+export function skeleton(rows = 6) {
+  return h("div", { class: "skel", "aria-hidden": "true" }, [
     h("div", { class: "skel-bar w40" }),
-    h("div", { class: "skel-bar w70" }),
-    ...Array.from({ length: rows }, (_, i) =>
-      h("div", { class: `skel-row ${i % 3 === 0 ? "w90" : i % 3 === 1 ? "w75" : "w85"}` })),
+    h("div", { class: "skel-row w70" }),
+    h("div", { class: "skel-table" }, Array.from({ length: rows }, (_, i) =>
+      h("div", { class: `skel-row ${i % 3 === 0 ? "w90" : i % 3 === 1 ? "w75" : "w85"}` }))),
   ]);
 }
 
@@ -863,61 +973,108 @@ const PREFIXED = [
   ["/day/", () => import("./pages/entity.js")],
 ];
 
+/* v4 sent any path it did not recognise to the Overview, so a mistyped link
+   looked like it worked and silently showed the wrong page. */
+const NOT_FOUND = () => import("./pages/notfound.js");
+
+const SITE = "Threat Radar";
+// How long a view may take before the loading placeholder appears. Under this
+// a cached or fast view swaps in without a flash of grey bars.
+const SKELETON_DELAY_MS = 150;
+
+let renderSeq = 0;
+let navigated = false;
+
 export function navigate(route) {
   history.pushState({}, "", url(route));
+  navigated = true;
   render();
 }
 
 export async function render() {
+  const mine = ++renderSeq;
   const path = currentPath();
   const prefixed = PREFIXED.find(([p]) => path.startsWith(p));
   if (prefixed) {
     const seg = path.split("/").filter(Boolean);
-    const raw = decodeURIComponent(seg[1] || "");
-    trailPush(path, raw.length > 18 ? `${raw.slice(0, 10)}\u2026${raw.slice(-6)}` : raw);
+    let raw = seg[1] || "";
+    try { raw = decodeURIComponent(raw); } catch (err) { /* keep it as it came */ }
+    trailPush(path, raw.length > 18 ? `${raw.slice(0, 10)}…${raw.slice(-6)}` : raw);
   } else {
     trailReset();
   }
 
-  document.body.dataset.page = prefixed ? prefixed[0] : path;
+  const known = prefixed || ROUTES[path];
+  document.body.dataset.page = prefixed ? prefixed[0] : known ? path : "404";
   document.querySelectorAll(".nav a[data-path]").forEach((a) => {
-    a.setAttribute("aria-current", a.dataset.path === path ? "page" : "false");
+    if (a.dataset.path === path) a.setAttribute("aria-current", "page");
+    else a.removeAttribute("aria-current");
     a.setAttribute("href", url(a.dataset.path));
   });
   const topbar = document.querySelector(".topbar");
   if (topbar) topbar.setAttribute("data-print-scope", windowLabel());
 
   const out = document.getElementById("view");
-  const load = prefixed ? prefixed[1] : (ROUTES[path] || ROUTES["/"]);
-  out.replaceChildren(skeleton());
+  const load = prefixed ? prefixed[1] : (ROUTES[path] || NOT_FOUND);
+  out.setAttribute("aria-busy", "true");
+  const skel = setTimeout(() => {
+    if (mine === renderSeq) out.replaceChildren(skeleton());
+  }, SKELETON_DELAY_MS);
+
+  let node;
+  let mod = null;
   try {
-    const mod = await load();
-    const node = await mod.render();
-    out.replaceChildren(node);
-    window.scrollTo({ top: 0 });
-    raf(() => fitTables(out));
-    import("./hovercard.js").then((hc) => hc.warmView(out)).catch(() => {});
-    document.title = mod.TITLE ? `${mod.TITLE} \u00b7 Threat Radar` : "Threat Radar";
-    const heading = document.getElementById("page-title");
-    if (heading) heading.textContent = mod.TITLE || "";
+    mod = await load();
+    node = await mod.render();
   } catch (err) {
-    out.replaceChildren(h("div", { class: "empty" }, [
-      h("b", { text: "This view could not be loaded." }),
-      h("span", { class: "mono", text: String(err && err.message ? err.message : err) }),
-    ]));
+    node = errorState(err);
   }
+  clearTimeout(skel);
+  if (mine !== renderSeq) return;      // a newer navigation already owns the view
+
+  out.replaceChildren(node);
+  out.setAttribute("aria-busy", "false");
+  window.scrollTo({ top: 0 });
+  raf(() => fitTables(out));
+  import("./hovercard.js").then((hc) => hc.warmView(out)).catch(() => {});
+
+  const title = mod ? (mod.DOC_TITLE || mod.TITLE) : "Something went wrong";
+  document.title = title ? `${title} | ${SITE}` : SITE;
+  const heading = document.getElementById("page-title");
+  if (heading) heading.textContent = (mod && mod.TITLE) || "";
+  // After an in-app navigation, move focus to the new content so a keyboard
+  // or screen reader user starts at the top of the page they asked for.
+  if (navigated) { navigated = false; out.focus({ preventScroll: true }); }
+}
+
+/* ---------- shell controls ---------- */
+
+function paintDensity() {
+  const btn = document.getElementById("density-toggle");
+  if (!btn) return;
+  const compact = state.density === "compact";
+  btn.replaceChildren(icon(compact ? "rows-4" : "rows-3"));
+  const label = `Row density: ${compact ? "compact" : "roomy"}. Switch to ${compact ? "roomy" : "compact"} (d)`;
+  btn.setAttribute("aria-label", label);
+  btn.title = label;
 }
 
 export function wireShell() {
+  const go = (e, path) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    navigate(path);
+  };
   document.querySelectorAll(".nav a[data-path]").forEach((a) => {
     a.setAttribute("href", url(a.dataset.path));
-    a.addEventListener("click", (e) => {
-      if (e.metaKey || e.ctrlKey || e.shiftKey) return;
-      e.preventDefault();
-      navigate(a.dataset.path);
-    });
+    a.addEventListener("click", (e) => go(e, a.dataset.path));
   });
+  const brand = document.getElementById("brand");
+  if (brand) brand.addEventListener("click", (e) => go(e, "/"));
   window.addEventListener("popstate", render);
+
+  const omniIcon = document.getElementById("omni-icon");
+  if (omniIcon) omniIcon.replaceChildren(icon("search"));
 
   document.body.dataset.mode = state.mode;
   setDensity(state.density);

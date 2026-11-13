@@ -18,7 +18,9 @@ from fastapi.testclient import TestClient
 from tests.support import DBTestCase
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-JS = ROOT / "app" / "static" / "js"
+STATIC = ROOT / "app" / "static"
+JS = STATIC / "js"
+CSS = STATIC / "css"
 
 # Code patterns, not words: comments that explain why these are absent are fine.
 SINKS = [
@@ -63,6 +65,80 @@ class FrontendTests(DBTestCase):
         page = TestClient(app).get("/").text
         for src in re.findall(r"<script[^>]+src=\"([^\"]+)\"", page):
             self.assertFalse(src.startswith(("http:", "https:", "//")), src)
+
+
+
+class NotFoundTests(DBTestCase):
+    """A path that is not a page answers 404, and only page paths get the shell."""
+
+    def setUp(self):
+        super().setUp()
+        from app.main import app
+        self.client = TestClient(app)
+
+    def test_an_unknown_page_is_a_404_that_still_carries_the_site(self):
+        r = self.client.get("/no-such-page")
+        self.assertEqual(r.status_code, 404)
+        self.assertIn("text/html", r.headers["content-type"])
+        self.assertIn("boot.js", r.text)
+        self.assertIn("content-security-policy", r.headers)
+
+    def test_api_and_static_misses_stay_plain(self):
+        r = self.client.get("/api/v1/no-such-route")
+        self.assertEqual(r.status_code, 404)
+        self.assertIn("application/json", r.headers["content-type"])
+        r = self.client.get("/static/no-such-file.css")
+        self.assertEqual(r.status_code, 404)
+        self.assertNotIn("boot.js", r.text)
+
+    def test_known_pages_and_the_icons_still_answer_200(self):
+        for path in ("/", "/sources", "/method", "/static/favicon.svg",
+                     "/static/favicon-32.png", "/static/apple-touch-icon.png"):
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, 200)
+
+
+class DesignSystemTests(unittest.TestCase):
+    """DESIGN.md's rules, checked where a check is cheap.
+
+    Colours, radii and the label style live in tokens.css; the component and
+    shell stylesheets only refer to them. A literal colour or a second radius
+    in a component is how a design system quietly stops being one.
+    """
+
+    SHEETS = ("app.css", "components.css")
+
+    def test_component_sheets_use_tokens_for_colour(self):
+        for name in self.SHEETS:
+            text = re.sub(r"/\*.*?\*/", "", (CSS / name).read_text(), flags=re.S)
+            with self.subTest(sheet=name):
+                self.assertEqual(re.findall(r"#[0-9a-fA-F]{3,8}\b", text), [])
+                self.assertEqual(re.findall(r"rgba?\(", text), [])
+
+    def test_one_corner_radius(self):
+        allowed = {"var(--radius)", "50%", "0"}
+        for name in self.SHEETS:
+            text = re.sub(r"/\*.*?\*/", "", (CSS / name).read_text(), flags=re.S)
+            for value in re.findall(r"border(?:-[a-z]+)*-radius:\s*([^;]+);", text):
+                parts = set(value.split())
+                with self.subTest(sheet=name, value=value):
+                    self.assertTrue(parts <= allowed, value)
+
+    def test_no_all_caps_labels(self):
+        for name in self.SHEETS:
+            text = (CSS / name).read_text()
+            with self.subTest(sheet=name):
+                self.assertNotIn("text-transform: uppercase;\n", text.replace("::first-letter { text-transform: uppercase; }", ""))
+
+    def test_every_icon_the_code_asks_for_exists(self):
+        table = (JS / "icons.js").read_text()
+        known = set(re.findall(r'^  "([a-z0-9-]+)":', table, re.M))
+        used = set()
+        for path in list(JS.rglob("*.js")):
+            used |= set(re.findall(r'\bicon\(\s*"([a-z0-9-]+)"', path.read_text()))
+            used |= set(re.findall(r'(?:iconName|ICON\[[^\]]+\])\s*[:=]\s*"([a-z0-9-]+)"', path.read_text()))
+        self.assertTrue(used, "expected icon() calls")
+        self.assertEqual(sorted(used - known), [])
 
 
 if __name__ == "__main__":

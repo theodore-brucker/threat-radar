@@ -50,10 +50,10 @@ export async function render() {
           : ".",
       ].flat()),
       table(
-        [{ label: "started" }, { label: "source" }, { label: "duration" },
-         { label: "commands", num: true }, { label: "fetched", num: true },
-         { label: "pushed", num: true }, { label: "first sample" },
-         { label: "pattern" }],
+        [{ label: "Started" }, { label: "Source" }, { label: "Duration" },
+         { label: "Commands", num: true }, { label: "Fetched", num: true },
+         { label: "Pushed", num: true }, { label: "First sample" },
+         { label: "Pattern" }],
         rows,
         (r) => [
           routeLink(`/session/${r.session}`, shortDate(r.started)),

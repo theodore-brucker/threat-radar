@@ -6,6 +6,8 @@
 
 import { api, h, panel, shortDate } from "../core.js";
 
+const when = (v) => (v ? `${shortDate(v)} UTC` : "Not yet");
+
 export const TITLE = "Method";
 
 const P = (t) => h("p", { text: t });
@@ -17,13 +19,13 @@ export async function render() {
 
   return h("div", {}, [
     h("div", { class: "pagehead" }, [
-      h("h2", { text: "How this works, and what it does not claim." }),
+      h("h2", { text: "How this works, and what it does not claim" }),
       P("A single Cowrie SSH honeypot runs on a public VPS with a custom persona: "
         + "hostname, banner, filesystem, hardware output, and a credential set seeded "
         + "from what attackers actually try. A stock Cowrie install is fingerprinted "
         + "and skipped by a lot of commodity tooling, so the persona is what keeps the "
         + "sensor worth interacting with."),
-      P("Logs ship to a Raspberry Pi over Tailscale every two minutes. The Pi parses them "
+      P("Logs ship to a Raspberry Pi over Tailscale on a short timer. The Pi parses them "
         + "into SQLite, enriches source addresses with geo and ASN data, and a worker "
         + "rebuilds the derived tables this site reads. No page here queries the raw event "
         + "table, which is why a million-row dataset renders instantly on a single-board "
@@ -57,7 +59,7 @@ export async function render() {
       ]),
     ]),
 
-    panel("Limitations", "Stated plainly, because a dashboard that hides them is marketing.", [
+    panel("Limitations", "What these numbers can and cannot support.", [
       P("Login success counts are not a compromise metric. The credential file accepts what "
         + "attackers offer by design, so a successful login means the sensor let them in, "
         + "not that a real system was breached."),
@@ -76,12 +78,14 @@ export async function render() {
         + "should not be trended against each other."),
     ]),
 
-    panel("Data currency", null, [
-      h("p", { class: "mono sub2", text:
-        `coverage ${cov.first_day || "?"} to ${cov.last_day || "?"} \u00b7 `
-        + `worker last run ${shortDate(w.last_run) || "never"} \u00b7 `
-        + `facts ${shortDate(w.facts_built_at)} \u00b7 intel ${shortDate(w.intel_built_at)} \u00b7 `
-        + `submissions ${shortDate(w.submissions_built_at)}` }),
-    ], { scoped: false }),
+    panel("How fresh this is", "When each part of the pipeline last ran.", [
+      h("dl", { class: "facts" }, [
+        ["Data covers", cov.first_day && cov.last_day ? `${cov.first_day} to ${cov.last_day}` : "No data yet"],
+        ["Analysis last ran", when(w.last_run)],
+        ["Daily facts rebuilt", when(w.facts_built_at)],
+        ["Reputation lookups", when(w.intel_built_at)],
+        ["Upstream submissions", when(w.submissions_built_at)],
+      ].flatMap(([k, v]) => [h("dt", { text: k }), h("dd", { text: v })])),
+    ]),
   ]);
 }

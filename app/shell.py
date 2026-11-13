@@ -17,6 +17,11 @@ theobrucker.us rather than only served at the root of the Pi.
 
 These routes are registered ahead of the ones in routers/site.py, which keeps
 the change to a single import in main.py and leaves the API surface alone.
+
+3.  Not found. A path that is not a page, not under /api and not a static
+    file gets the same shell with status 404, so a crawler or link checker
+    sees the truth while a reader gets the site's own not-found page around
+    it. API and static misses keep their plain responses.
 """
 
 import base64
@@ -25,7 +30,7 @@ import os
 import re
 
 from fastapi import APIRouter
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 router = APIRouter()
 
@@ -98,3 +103,24 @@ SECURITY_HEADERS = {
 @router.get("/day/{value}", include_in_schema=False)
 def shell():
     return HTMLResponse(SHELL_HTML, headers={"Cache-Control": "no-cache"})
+
+
+def _is_page_path(path):
+    """True for a path a reader could have typed or followed as a page link."""
+    rel = path[len(PREFIX):] if PREFIX and path.startswith(PREFIX) else path
+    return not (rel.startswith("/api/") or rel.startswith("/static/") or rel == "/api")
+
+
+async def not_found(request, exc):
+    """404 handler: the shell for page paths, JSON for everything else.
+
+    Registered for HTTPException in main.py. Any status other than 404 keeps
+    the framework's own JSON shape, which is what the API contract tests and
+    the front end's error messages expect.
+    """
+    status = getattr(exc, "status_code", 500)
+    detail = getattr(exc, "detail", None)
+    headers = getattr(exc, "headers", None)
+    if status == 404 and request.method in ("GET", "HEAD") and _is_page_path(request.url.path):
+        return HTMLResponse(SHELL_HTML, status_code=404, headers={"Cache-Control": "no-cache"})
+    return JSONResponse({"detail": detail}, status_code=status, headers=headers)
