@@ -65,6 +65,10 @@ class RouteCase(DBTestCase):
             return None
         if route.path == "/api/v1/export/{etype}/{value}":
             return "/api/v1/export/ip/192.0.2.10"
+        # This fixture has no trends tables; tests/test_trends.py covers
+        # the trends record routes against a seeded database.
+        if route.path.startswith("/api/v1/trends/") and "{" in route.path:
+            return None
         path = route.path
         for p in route.dependant.path_params:
             path = path.replace("{%s}" % p.name, values[p.name])

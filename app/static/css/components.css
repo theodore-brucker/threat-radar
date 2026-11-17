@@ -653,3 +653,53 @@ kbd {
   border-radius: var(--radius); padding: 0 var(--s1); background: var(--surface);
   color: var(--ink-soft);
 }
+
+/* ---------- incident trends ----------
+   Charts scale to their box and hold no text, so labels and the tooltip are
+   HTML. Bars and points are buttons: they list the rows behind them. */
+
+.figbtn {
+  display: block; padding: 0; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: var(--fs-24); font-weight: var(--fw-semibold);
+  color: var(--accent); text-align: left; line-height: var(--lh-tight);
+}
+.figbtn:hover { text-decoration: underline; }
+.linkish {
+  padding: 0; border: 0; background: none; cursor: pointer;
+  font: inherit; color: var(--accent); text-decoration: underline;
+}
+.tchart { position: relative; }
+.tsvg {
+  display: block; width: 100%; height: 160px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--radius);
+}
+.tbar { fill: var(--mark); cursor: pointer; }
+.tbar.partial { fill: var(--surface); stroke: var(--mark); stroke-width: 2; }
+.tbar:hover, .tbar:focus { fill: var(--accent); outline: none; }
+.tfit { fill: none; stroke: var(--ink-dim); stroke-width: 1.5; stroke-dasharray: 4 3; pointer-events: none; }
+.tline { fill: none; stroke: var(--mark); stroke-width: 1.5; pointer-events: none; }
+.tdot { stroke: var(--mark); stroke-width: 6; stroke-linecap: round; pointer-events: none; }
+.thit { fill: transparent; cursor: pointer; }
+.thit:hover, .thit:focus { fill: var(--accent-tint); outline: none; }
+.ttip {
+  position: absolute; top: var(--s2); transform: translateX(-50%);
+  max-width: 260px; padding: var(--s1) var(--s2); pointer-events: none;
+  background: var(--ink); color: var(--canvas); border-radius: var(--radius);
+  font-size: var(--fs-12); line-height: var(--lh-ui);
+}
+.taxis { display: flex; justify-content: space-between; gap: var(--s2); margin-top: var(--s1); }
+.tbuckets { display: grid; gap: var(--s2); max-width: var(--measure); }
+.tbucket {
+  display: grid; grid-template-columns: 8rem minmax(0, 1fr) 3rem; gap: var(--s2);
+  align-items: center; padding: 0; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: var(--fs-13); color: var(--ink); text-align: left;
+}
+.tbucket:hover .tbl, .tbucket:focus .tbl { color: var(--accent); text-decoration: underline; }
+.ttrack { display: block; height: 10px; background: var(--track); border-radius: var(--radius); }
+.tfill { display: block; height: 100%; background: var(--mark); border-radius: var(--radius); }
+.tbn { text-align: right; font-variant-numeric: tabular-nums; }
+.rowshead { font-size: var(--fs-15); margin: 0 0 var(--s3); }
+@media (max-width: 480px) {
+  .tsvg { height: 120px; }
+  .tbucket { grid-template-columns: 6.5rem minmax(0, 1fr) 2.5rem; }
+}

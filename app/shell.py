@@ -101,6 +101,10 @@ SECURITY_HEADERS = {
 @router.get("/hassh/{value}", include_in_schema=False)
 @router.get("/url/{value}", include_in_schema=False)
 @router.get("/day/{value}", include_in_schema=False)
+@router.get("/trends", include_in_schema=False)
+@router.get("/incident/{value}", include_in_schema=False)
+@router.get("/vendor/{value}", include_in_schema=False)
+@router.get("/organization/{value}", include_in_schema=False)
 def shell():
     return HTMLResponse(SHELL_HTML, headers={"Cache-Control": "no-cache"})
 
