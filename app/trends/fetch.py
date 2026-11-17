@@ -2,7 +2,9 @@
 
 Each source keeps the ETag and Last-Modified it last saw in
 trend_fetch_state. An unchanged feed answers 304 with no body, which is most
-runs. Bodies are capped so a misbehaving server cannot fill the SD card.
+runs. Bodies are capped so a misbehaving server cannot exhaust memory; the
+cap is per source because the CISA files hold their whole catalog. Only
+parsed fields are stored, so a body's size does not reach the SD card.
 """
 
 import urllib.error
@@ -38,7 +40,7 @@ def save_state(con, source, status, etag=None, last_modified=None, size=0):
         (source, etag, last_modified, db.utcnow(), str(status), size))
 
 
-def get(source, url, con=None, headers=None, opener=None):
+def get(source, url, con=None, headers=None, opener=None, max_bytes=MAX_BYTES):
     """Answer (status, body, etag, last_modified). status 304 has body None.
 
     con is read for the stored validators and never written here, so a dry
@@ -53,9 +55,9 @@ def get(source, url, con=None, headers=None, opener=None):
     open_ = opener or urllib.request.urlopen
     try:
         with open_(req, timeout=TIMEOUT) as resp:
-            body = resp.read(MAX_BYTES + 1)
-            if len(body) > MAX_BYTES:
-                raise FetchError(f"{source}: response is over {MAX_BYTES} bytes")
+            body = resp.read(max_bytes + 1)
+            if len(body) > max_bytes:
+                raise FetchError(f"{source}: response is over {max_bytes} bytes")
             return (resp.status, body, resp.headers.get("ETag"),
                     resp.headers.get("Last-Modified"))
     except urllib.error.HTTPError as exc:

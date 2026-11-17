@@ -87,7 +87,8 @@ def collect(con, name, spec, use_model, dry_run):
         if not token:
             return {"source": name, "skipped": f"{spec['token_env']} is not set"}
         headers[spec["header"]] = token
-    status, body, etag, last_mod = fetch.get(name, spec["url"], con, headers)
+    status, body, etag, last_mod = fetch.get(name, spec["url"], con, headers,
+                                             max_bytes=spec.get("max_bytes", fetch.MAX_BYTES))
     result = {"source": name, "http": status, "bytes_fetched": len(body or b"")}
     if status == 304:
         result["rows"] = 0

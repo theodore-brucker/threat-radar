@@ -91,6 +91,15 @@ class FetchTests(unittest.TestCase):
         with self.assertRaises(fetch.FetchError):
             fetch.get("s", "https://x.example/big", None, opener=opener)
 
+    def test_the_cap_is_per_source(self):
+        def opener(req, timeout):
+            return FakeResponse(b"x" * (fetch.MAX_BYTES + 1))
+        status, body, _, _ = fetch.get("s", "https://x.example/big", None, opener=opener,
+                                       max_bytes=fetch.MAX_BYTES * 2)
+        self.assertEqual((status, len(body)), (200, fetch.MAX_BYTES + 1))
+        for name in ("cisa-kev", "cisa-advisories"):
+            self.assertGreater(collectors.SOURCES[name]["max_bytes"], 2 * 1024 * 1024)
+
     def test_a_304_keeps_the_stored_etag(self):
         _, con = fresh_db(self)
         fetch.save_state(con, "s", 200, '"abc"', None, 10)
@@ -335,7 +344,7 @@ def load_worker():
     return worker
 
 
-def fake_get(source, url, con=None, headers=None, opener=None):
+def fake_get(source, url, con=None, headers=None, opener=None, max_bytes=None):
     if source == "cisa-kev":
         return 200, json.dumps({"vulnerabilities": [{"cveID": "CVE-2026-1234"}]}).encode(), '"k"', None
     if source == "cisa-advisories":
