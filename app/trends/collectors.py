@@ -92,11 +92,13 @@ def parse_claims(body):
 SOURCES = {
     "cisa-kev": {
         "url": "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
-        "parse": parse_kev, "every_hours": 6,
+        # The whole catalog in one file: 1.85 MB in November 2026 and growing.
+        "parse": parse_kev, "every_hours": 6, "max_bytes": 8 * 1024 * 1024,
     },
     "cisa-advisories": {
         "url": "https://www.cisa.gov/cybersecurity-advisories/all.xml",
-        "parse": parse_rss, "every_hours": 6,
+        # Items carry full advisory bodies, so the feed is over 2 MB.
+        "parse": parse_rss, "every_hours": 6, "max_bytes": 8 * 1024 * 1024,
     },
     "dysruptionhub": {
         "url": "https://dysruptionhub.com/feed/",
