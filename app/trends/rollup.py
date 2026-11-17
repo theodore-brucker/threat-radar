@@ -11,7 +11,6 @@ import json
 
 from app.analytics import db
 
-COUNTED = ("org", "vendor")
 CLUSTER_MIN = 3
 CLUSTER_DAYS = 5
 

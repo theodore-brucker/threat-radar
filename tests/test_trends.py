@@ -198,6 +198,21 @@ class CollectorTests(unittest.TestCase):
                          "WHERE s.text LIKE '%South Portland%'").fetchone()
         self.assertEqual(st[0], "seed")
 
+    def test_a_feed_with_a_dtd_is_refused(self):
+        bomb = b'<?xml version="1.0"?><!DOCTYPE r [<!ENTITY a "aaaa">]><rss><channel/></rss>'
+        with self.assertRaises(ValueError):
+            collectors.parse_rss(bomb)
+
+    def test_claims_join_a_seed_incident(self):
+        _, con = fresh_db(self)
+        with con:
+            seed.load(con)
+            n = collectors.store_claims(con, [{"actor": "g", "victim": "City of South Portland",
+                                               "country": "US", "discovered": "2026-11-20",
+                                               "post_url": None}])
+        self.assertEqual(n, 1)
+        self.assertEqual(con.execute("SELECT COUNT(*) FROM incident_claim").fetchone()[0], 1)
+
     def test_kev_and_claims_parse(self):
         kev = json.dumps({"vulnerabilities": [{"cveID": "CVE-2026-1234", "vendorProject": "V",
                                                "product": "P", "dateAdded": "2026-11-10"},
@@ -312,12 +327,108 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(d, {"built": False})
 
 
+def load_worker():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("trends_worker", os.path.join(ROOT, "bin", "trends_worker.py"))
+    worker = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(worker)
+    return worker
+
+
+def fake_get(source, url, con=None, headers=None, opener=None):
+    if source == "cisa-kev":
+        return 200, json.dumps({"vulnerabilities": [{"cveID": "CVE-2026-1234"}]}).encode(), '"k"', None
+    if source == "cisa-advisories":
+        return 304, None, None, None
+    if source == "dysruptionhub":
+        return 200, RSS, '"d"', "Tue, 17 Nov 2026 13:00:00 GMT"
+    raise fetch.FetchError(f"{source}: refused")
+
+
+class WorkerRunTests(unittest.TestCase):
+    def setUp(self):
+        self.worker = load_worker()
+        self.path, self.con = fresh_db(self)
+        for p in (mock.patch.object(db, "DB_PATH", self.path),
+                  mock.patch.object(fetch, "get", side_effect=fake_get),
+                  mock.patch.object(classify, "model_available", return_value=False),
+                  mock.patch.dict(os.environ, {"TR_RANSOMWARE_LIVE_TOKEN": "t"})):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def run_main(self, *args):
+        out = io.StringIO()
+        with mock.patch("sys.stdout", out):
+            code = self.worker.main(list(args))
+        return code, out.getvalue()
+
+    def test_a_full_run_loads_collects_and_rolls_up(self):
+        code, out = self.run_main()
+        self.assertEqual(code, 0)
+        q = lambda sql: self.con.execute(sql).fetchone()[0]  # noqa: E731
+        self.assertEqual(q("SELECT COUNT(*) FROM incident WHERE kind='org' AND source='seed'"), 214)
+        self.assertEqual(q("SELECT COUNT(*) FROM cve"), 1)
+        self.assertEqual(q("SELECT COUNT(*) FROM source_item WHERE source='dysruptionhub'"), 3)
+        self.assertEqual(q("SELECT last_status FROM trend_fetch_state WHERE source='cisa-advisories'"), "304")
+        self.assertEqual(q("SELECT last_status FROM trend_fetch_state WHERE source='ransomware-live'"), "error")
+        self.assertGreater(q("SELECT COUNT(*) FROM trend_weekly"), 0)
+        self.assertIn("bytes written", out)
+        # A second run straight after finds nothing due and leaves the rollup alone.
+        built = q("SELECT value FROM trend_meta WHERE key='built_at'")
+        code, out = self.run_main()
+        self.assertEqual(code, 0)
+        self.assertNotIn("dysruptionhub", out)
+        self.assertEqual(q("SELECT value FROM trend_meta WHERE key='built_at'"), built)
+
+    def test_one_source_and_a_forced_rollup(self):
+        code, out = self.run_main("--source", "dysruptionhub", "--rollup", "--no-model")
+        self.assertEqual(code, 0)
+        self.assertIn("rollup", out)
+        self.assertNotIn("cisa-kev", out)
+
+    def test_every_source_failing_is_a_failed_run(self):
+        code, _ = self.run_main("--source", "ransomware-live")
+        self.assertEqual(code, 1)
+
+    def test_a_spent_write_budget_skips_collection(self):
+        self.con.execute("INSERT INTO trend_write_log(day, bytes) VALUES(?, ?)",
+                         (dt.datetime.now(dt.timezone.utc).date().isoformat(), 10 ** 9))
+        self.con.commit()
+        code, out = self.run_main()
+        self.assertEqual(code, 0)
+        self.assertIn("write budget", out)
+        self.assertEqual(self.con.execute("SELECT COUNT(*) FROM incident").fetchone()[0], 0)
+
+    def test_dry_run_main_writes_nothing(self):
+        self.run_main()
+        before = self.con.execute("SELECT COUNT(*) FROM source_item").fetchone()[0]
+        with mock.patch.dict(os.environ, {"TR_RANSOMWARE_LIVE_TOKEN": ""}):
+            code, out = self.run_main("--dry-run")
+        self.assertEqual(code, 0)
+        self.assertIn("seed rows", out)
+        self.assertIn("is not set", out)
+        self.assertEqual(self.con.execute("SELECT COUNT(*) FROM source_item").fetchone()[0], before)
+
+    def test_recheck_takes_a_later_stated_cause(self):
+        self.run_main()
+        iid = self.con.execute("SELECT id FROM incident WHERE cause_status='undisclosed' "
+                               "AND kind='org' LIMIT 1").fetchone()[0]
+        self.con.execute("UPDATE incident SET rechecked_at=NULL WHERE id=?", (iid,))
+        self.con.execute("INSERT INTO statement(incident_id, stated_at, cause_status, text) "
+                         "VALUES(?, '2026-11-18', 'malicious', 'ransomware confirmed')", (iid,))
+        self.con.commit()
+        res = self.worker.recheck(self.con, dt.datetime.now(dt.timezone.utc))
+        self.assertGreaterEqual(res["changed"], 1)
+        self.assertEqual(self.con.execute("SELECT cause_status FROM incident WHERE id=?",
+                                          (iid,)).fetchone()[0], "malicious")
+
+    def test_written_bytes_reads_proc(self):
+        self.assertIsInstance(self.worker.written_bytes(), int)
+
+
 class WorkerTests(unittest.TestCase):
     def test_dry_run_writes_nothing(self):
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("trends_worker", os.path.join(ROOT, "bin", "trends_worker.py"))
-        worker = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(worker)
+        worker = load_worker()
         path, con = fresh_db(self)
         with mock.patch.object(fetch, "get", return_value=(200, RSS, '"e"', None)):
             res = worker.collect(con, "dysruptionhub", collectors.SOURCES["dysruptionhub"], False, True)
@@ -327,10 +438,7 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(con.execute("SELECT COUNT(*) FROM trend_fetch_state").fetchone()[0], 0)
 
     def test_due(self):
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("trends_worker", os.path.join(ROOT, "bin", "trends_worker.py"))
-        worker = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(worker)
+        worker = load_worker()
         _, con = fresh_db(self)
         now = dt.datetime(2026, 11, 17, 12, tzinfo=dt.timezone.utc)
         self.assertTrue(worker.due(con, "s", 6, now))

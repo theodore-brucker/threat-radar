@@ -32,8 +32,16 @@ def _day(value):
 
 
 def parse_rss(body):
-    """RSS 2.0 items as dicts. ElementTree does not resolve external entities."""
-    root = ET.fromstring(body)
+    """RSS 2.0 items as dicts.
+
+    A feed with a document type declaration is refused before parsing. RSS
+    has no use for one, and refusing it closes the entity-expansion and
+    external-entity attacks bandit's B314 warns about, which is what
+    defusedxml would do; the collectors stay on the standard library.
+    """
+    if re.search(rb"<!(DOCTYPE|ENTITY)", body, re.I):
+        raise ValueError("feed carries a document type declaration")
+    root = ET.fromstring(body)  # nosec B314
     out = []
     for it in root.iter("item"):
         link = (it.findtext("link") or "").strip()
