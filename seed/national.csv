@@ -1,0 +1,9 @@
+id,date,event,scope,stated_cause,status
+n1,2026-11-12,Microsoft 365 outage (Outlook / Teams / Copilot),Global; 70+ countries; about 24 hours,Issue from an earlier network capacity upgrade surfaced after a recent network change,Stated non-malicious
+n2,2026-11-13,FAA nationwide ground stop,17 of 22 en route centers; about 5 hours,New L3Harris-installed Juniper router flooded the network during a copper-to-fiber cutover; faulty device vs bad install unresolved; FBI reviewing,Open; no evidence of attack
+n3,2026-11-13,Workday outage,Payroll and HR for about 11500 customer companies,None stated,Undisclosed
+n4,2026-11-13,California superior courts (Alameda / Kern / LA),Case search and e-filing,Alameda cited a security threat; no detail,Undisclosed
+n5,2026-11-15,City of South Portland ME network,City Hall / library / assessing closed; phones and portals down; tax deadline moved to Nov 23,City says initial information suggests activity by bad actors; state and federal agencies assisting,Suspected malicious
+n6,2026-11-15,Perry Local Schools OH,All schools closed Nov 16,Called a cyber incident; no mechanism given,Undisclosed
+n7,2026-11-16,Major bank online access (Chase / BofA / Wells / US Bank / Capital One / Truist),About 4800 Chase reports at peak; Zelle delays,Chase: software bug in on-premise hardware and no evidence of cyber; other banks gave no cause; Wells Fargo told Fox Business it was not affected,Chase non-malicious; rest undisclosed
+n8,2026-11-16,United Airlines system outage,Departing flights; resolved same evening,Technology issue; no indication of cyber,Stated non-malicious

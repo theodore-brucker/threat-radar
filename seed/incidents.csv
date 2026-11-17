@@ -1,0 +1,215 @@
+date,state,sector,cause_status,org
+2026-11-15,ME,Gov,Undisclosed or vague,City of South Portland
+2026-11-15,OH,Edu,Undisclosed or vague,Perry Local School District
+2026-11-13,CA,Gov,Undisclosed or vague,Alameda / Kern / LA superior courts
+2026-11-11,LA,Edu,Undisclosed or vague,Acadia Parish School System
+2026-11-11,OH,Edu,Undisclosed or vague,Wilmington College
+2026-11-10,ID,Edu,Undisclosed or vague,New Plymouth School District
+2026-11-09,NH,Health,Undisclosed or vague,Monadnock Community Hospital
+2026-11-09,MA,IT,Non-malicious or precautionary,N-able (precautionary N-central shutdown)
+2026-11-09,CA,Health,Malicious cause stated,Ridgecrest Regional Hospital
+2026-11-09,TN,Edu,Undisclosed or vague,Vanderbilt University
+2026-11-07,IL,Edu,Malicious cause stated,UChicago Computer Science
+2026-11-06,CA,Gov,Undisclosed or vague,LA Homeless Services Authority
+2026-11-05,DE,Transport,Undisclosed or vague,Delaware E-ZPass
+2026-11-05,UT,Health,Malicious cause stated,Myriad Genetics
+2026-11-04,NY,Other,Malicious cause stated,Queens Public Library
+2026-11-03,WA,Gov,Malicious cause stated,Washington Secretary of State
+2026-11-02,NY,Other,Undisclosed or vague,Turning Stone Enterprises
+2026-10-30,NC,IT,Malicious cause stated,Abrigo (Sageworks)
+2026-10-29,FL,Gov,Malicious cause stated,Florida Department of Education
+2026-10-29,CT,Gov,Undisclosed or vague,Town of Plainfield
+2026-10-28,WV,Edu,Undisclosed or vague,Barbour County Schools
+2026-10-28,FL,Gov,Malicious cause stated,Seminole County Clerk
+2026-10-27,CA,Other,Undisclosed or vague,American Honda
+2026-10-27,TX,Edu,Malicious cause stated,UT Arlington
+2026-10-26,DC,Gov,Malicious cause stated,Federal Election Commission
+2026-10-26,NM,Health,Undisclosed or vague,UNM Health System
+2026-10-25,OH,Gov,Malicious cause stated,Ohio Auditor of State
+2026-10-23,OK,Health,Undisclosed or vague,Urologic Specialists of Oklahoma
+2026-10-22,NY,Edu,Malicious cause stated,Oneonta City School District
+2026-10-22,NJ,Health,Malicious cause stated,Quest Diagnostics
+2026-10-22,OH,Health,Undisclosed or vague,University Hospitals
+2026-10-21,AZ,Edu,Malicious cause stated,Arizona ESA platform
+2026-10-21,KS,IT,Non-malicious or precautionary,CivicPlus (precautionary)
+2026-10-21,VA,Edu,Malicious cause stated,Richmond Public Schools
+2026-10-21,OH,Other,Malicious cause stated,TAKKT
+2026-10-20,SC,Gov,Malicious cause stated,City of Columbia
+2026-10-20,CA,IT,Malicious cause stated,Railway
+2026-10-19,NE,Health,Malicious cause stated,Community Medical Center
+2026-10-19,TX,IT,Malicious cause stated,Loxone
+2026-10-19,GA,Edu,Undisclosed or vague,Seminole County School System
+2026-10-18,ID,Edu,Malicious cause stated,Jerome Joint SD 261
+2026-10-18,IN,Health,Undisclosed or vague,Parkview Health
+2026-10-17,MA,IT,Undisclosed or vague,Bullhorn
+2026-10-17,CA,IT,Malicious cause stated,Anomaly Innovations (OpenCode)
+2026-10-16,FL,IT,Malicious cause stated,ConnectWise
+2026-10-14,KS,Edu,Malicious cause stated,Lakin USD 215
+2026-10-13,TX,Gov,Undisclosed or vague,Colorado County
+2026-10-12,OH,Other,Malicious cause stated,WHIZ
+2026-10-11,PA,Other,Undisclosed or vague,Ahold Delhaize
+2026-10-10,CA,IT,Undisclosed or vague,Continental Utility Solutions
+2026-10-10,UT,Gov,Malicious cause stated,Heber City
+2026-10-09,CA,Other,Undisclosed or vague,California School Boards Assn
+2026-10-09,NE,Gov,Malicious cause stated,North Platte / Lincoln County
+2026-10-09,NM,Gov,Malicious cause stated,Town of Bernalillo
+2026-10-09,DC,Gov,Undisclosed or vague,US bankruptcy noticing system
+2026-10-09,MS,IT,Undisclosed or vague,U.S.NEXT
+2026-10-08,CA,Health,Malicious cause stated,Santa Barbara Endodontics
+2026-10-07,MD,Edu,Non-malicious or precautionary,Maryland State Dept of Education (precautionary)
+2026-10-06,KY,IT,Undisclosed or vague,Senture
+2026-10-05,MA,Edu,Undisclosed or vague,Easthampton Public Schools
+2026-10-04,PA,Edu,Undisclosed or vague,Indiana Area School District
+2026-10-02,CA,Finance,Undisclosed or vague,BM Technologies (BankMobile)
+2026-10-02,LA,Health,Malicious cause stated,Green Clinic
+2026-10-02,NM,Edu,Undisclosed or vague,Institute of American Indian Arts
+2026-10-02,CO,Utility,Malicious cause stated,Sangre de Cristo Electric
+2026-10-02,IL,Edu,Malicious cause stated,UIC College of Medicine
+2026-10-01,MS,Gov,Malicious cause stated,City of Vicksburg
+2026-09-30,MO,Gov,Undisclosed or vague,Jefferson County
+2026-09-30,TX,Gov,Undisclosed or vague,City of Big Spring
+2026-09-30,LA,Gov,Malicious cause stated,Terrebonne Parish
+2026-09-29,VA,Gov,Undisclosed or vague,City of Radford
+2026-09-29,TX,Edu,Undisclosed or vague,Llano ISD
+2026-09-25,CA,IT,Non-malicious or precautionary,Kiteworks (precautionary)
+2026-09-25,SC,Edu,Malicious cause stated,South Carolina Dept of Education
+2026-09-23,WI,Gov,Malicious cause stated,City of Stevens Point
+2026-09-22,MI,Other,Malicious cause stated,Astemo Americas
+2026-09-22,DC,Gov,Malicious cause stated,FBIjobs.gov
+2026-09-21,ID,IT,Malicious cause stated,Elsevier
+2026-09-18,KS,Gov,Malicious cause stated,Ellis County
+2026-09-17,UT,Utility,Malicious cause stated,Direct Communications (DDoS)
+2026-09-17,TN,Other,Malicious cause stated,The Well Outreach
+2026-09-16,TX,Gov,Malicious cause stated,City of Princeton
+2026-09-13,CO,Edu,Undisclosed or vague,Weld Re-8 School District
+2026-09-11,MA,Health,Undisclosed or vague,Fenway Health
+2026-09-11,CA,IT,Malicious cause stated,Helpfeel (Gyazo)
+2026-09-10,WI,Edu,Undisclosed or vague,School District of Monroe
+2026-09-09,TX,Other,Undisclosed or vague,Beckett Collectibles
+2026-09-09,WA,Edu,Undisclosed or vague,Spokane Public Schools
+2026-09-08,CA,Transport,Malicious cause stated,Caltrans I-405 sign
+2026-09-08,WY,Finance,Undisclosed or vague,Hilltop National Bank
+2026-09-08,AK,Edu,Undisclosed or vague,North Slope Borough SD
+2026-09-07,MS,Edu,Undisclosed or vague,Mississippi IHL
+2026-09-06,MA,Gov,Undisclosed or vague,City of Everett
+2026-09-05,SC,Edu,Malicious cause stated,Greenville County Schools
+2026-09-03,VT,Edu,Malicious cause stated,Slate Valley UUSD
+2026-09-01,AL,Gov,Malicious cause stated,Alabama Board of Nursing
+2026-09-01,NJ,Edu,Undisclosed or vague,Westfield Public Schools
+2026-08-31,MD,Health,Undisclosed or vague,Luminis Health
+2026-08-28,TX,Health,Malicious cause stated,McKesson
+2026-08-26,DC,Gov,Malicious cause stated,ATF
+2026-08-26,OH,Gov,Malicious cause stated,City of Circleville
+2026-08-26,AZ,Gov,Undisclosed or vague,Defense Commissary Agency (freezers)
+2026-08-25,MA,Health,Undisclosed or vague,Boston Scientific
+2026-08-25,NH,Gov,Malicious cause stated,Merrimack County
+2026-08-25,VT,Health,Undisclosed or vague,Northern Counties Health Care
+2026-08-25,CA,Edu,Undisclosed or vague,UC Berkeley EECS
+2026-08-24,VA,Health,Malicious cause stated,Express Billing Systems
+2026-08-24,PA,Finance,Non-malicious or precautionary,Franklin Mint FCU (domain transfer)
+2026-08-18,MI,Utility,Malicious cause stated,City of Algonac
+2026-08-18,KS,Gov,Malicious cause stated,City of Fort Scott
+2026-08-17,MI,Health,Malicious cause stated,Lansing Urgent Care
+2026-08-16,AR,Gov,Malicious cause stated,City of Fort Smith
+2026-08-15,MA,Edu,Malicious cause stated,Springfield Public Schools
+2026-08-15,TX,Edu,Malicious cause stated,UT San Antonio
+2026-08-14,MO,Health,Undisclosed or vague,Cedar County Memorial Hospital
+2026-08-13,MA,Gov,Malicious cause stated,Town of Andover
+2026-08-13,ME,Gov,Malicious cause stated,Town of Lincoln
+2026-08-13,AZ,IT,Non-malicious or precautionary,Namecheap (cooling failure)
+2026-08-13,MA,Gov,Malicious cause stated,Plymouth County Sheriff
+2026-08-12,SC,Gov,Undisclosed or vague,Darlington County
+2026-08-11,NE,Edu,Malicious cause stated,UNMC
+2026-08-10,KS,Gov,Undisclosed or vague,Douglas County Sheriff
+2026-08-10,CA,IT,Malicious cause stated,Alation
+2026-08-10,TX,Edu,Undisclosed or vague,Brazosport College
+2026-08-10,MI,Utility,Malicious cause stated,City of Brown City
+2026-08-10,NY,IT,Undisclosed or vague,LexisNexis
+2026-08-07,NC,Gov,Malicious cause stated,ElectSure Learning
+2026-08-07,NJ,Utility,Malicious cause stated,Hamilton Township MUA
+2026-08-07,CA,Gov,Malicious cause stated,City of Suisun City
+2026-08-06,OH,Gov,Malicious cause stated,City of Lancaster
+2026-08-06,TX,Gov,Undisclosed or vague,Coryell County
+2026-08-06,SD,Gov,Undisclosed or vague,City of Mitchell
+2026-08-06,WI,Gov,Malicious cause stated,Washburn County
+2026-08-05,IL,Other,Malicious cause stated,Woodhaven Lakes
+2026-08-05,OK,Gov,Malicious cause stated,City of Coweta
+2026-08-05,IL,Gov,Malicious cause stated,Waukegan Township
+2026-08-04,PA,Gov,Malicious cause stated,Beaver County
+2026-08-04,NC,Transport,Malicious cause stated,NC State Ports Authority
+2026-08-03,TX,Health,Undisclosed or vague,JPS Health Network
+2026-08-03,NY,Finance,Undisclosed or vague,Sawyer Savings Bank
+2026-08-01,GA,Gov,Malicious cause stated,City of Norcross
+2026-07-31,SD,Utility,Malicious cause stated,City of Rapid City
+2026-07-30,OK,Edu,Malicious cause stated,Southeastern Oklahoma State
+2026-07-30,NY,Health,Malicious cause stated,UltraMobile Imaging
+2026-07-27,MI,Utility,Malicious cause stated,Charter Township of Alpena
+2026-07-27,MN,Utility,Malicious cause stated,City of Braham
+2026-07-27,NJ,Utility,Malicious cause stated,City of Cape May
+2026-07-27,AL,Utility,Malicious cause stated,Childersburg Water Works
+2026-07-27,GA,Utility,Malicious cause stated,Coweta County WSA
+2026-07-27,GA,Utility,Undisclosed or vague,Clayton County Water Authority
+2026-07-27,GA,Utility,Malicious cause stated,Columbus Water Works
+2026-07-27,MN,Utility,Undisclosed or vague,City of Maple Plain
+2026-07-27,GA,Edu,Undisclosed or vague,Newton County Schools
+2026-07-27,OH,Health,Malicious cause stated,Saber Healthcare Group
+2026-07-27,MN,Utility,Malicious cause stated,City of South St. Paul
+2026-07-27,NJ,Utility,Malicious cause stated,Woodbine MUA
+2026-07-26,SC,Health,Malicious cause stated,AnMed
+2026-07-26,IL,Health,Malicious cause stated,Chicago Vein Institute
+2026-07-26,MN,Utility,Malicious cause stated,City of Plymouth
+2026-07-24,CA,Edu,Undisclosed or vague,Oceanside USD
+2026-07-20,TX,Gov,Malicious cause stated,City of Dallas
+2026-07-20,TN,Edu,Malicious cause stated,Sumner County Schools
+2026-07-19,ME,Utility,Malicious cause stated,Tidewater Telecom
+2026-07-18,TX,Health,Malicious cause stated,AngMar Management Services
+2026-07-16,MI,Other,Malicious cause stated,fairlife
+2026-07-16,AK,Gov,Malicious cause stated,Kenaitze Indian Tribe
+2026-07-15,NH,Gov,Undisclosed or vague,Town of Milford
+2026-07-15,OK,Other,Malicious cause stated,Oklahoma Manufacturing Alliance
+2026-07-14,TN,Gov,Undisclosed or vague,Campbell County
+2026-07-14,NC,Health,Malicious cause stated,Deese and Locklear Chiropractic
+2026-07-14,WI,Finance,Malicious cause stated,TruStage
+2026-07-14,VA,Gov,Malicious cause stated,Virginia Peninsula Regional Jail
+2026-07-13,PA,Edu,Undisclosed or vague,Cedar Crest College
+2026-07-12,CA,Utility,Malicious cause stated,Greenfield Communications (DDoS)
+2026-07-11,AK,Gov,Malicious cause stated,Petersburg Borough
+2026-07-10,MA,IT,Malicious cause stated,Progress Software ShareFile
+2026-07-09,GA,Gov,Malicious cause stated,Greene County
+2026-07-07,FL,Gov,Malicious cause stated,St. Lucie County Clerk
+2026-07-05,SD,Gov,Malicious cause stated,Pennington County
+2026-07-03,TX,Gov,Undisclosed or vague,City of Jacksonville
+2026-06-30,CA,Health,Malicious cause stated,Vista Del Mar
+2026-06-29,CO,Edu,Malicious cause stated,Salida School District
+2026-06-28,DC,Gov,Undisclosed or vague,DC Housing Authority
+2026-06-26,PA,Gov,Malicious cause stated,Delaware County
+2026-06-24,IA,Other,Undisclosed or vague,American Color Imaging
+2026-06-23,OH,Edu,Undisclosed or vague,Akron Public Schools
+2026-06-22,TX,Gov,Undisclosed or vague,Wise County Sheriff
+2026-06-17,MO,Gov,Undisclosed or vague,City of University City
+2026-06-16,AL,Finance,Malicious cause stated,River Financial Corporation
+2026-06-14,NY,Health,Malicious cause stated,Premier Medical Group
+2026-06-11,MO,Finance,Malicious cause stated,NAIC
+2026-06-11,VA,Gov,Undisclosed or vague,Prince George County
+2026-06-10,SC,Gov,Undisclosed or vague,Spartanburg County
+2026-06-09,NC,Edu,Malicious cause stated,Onslow County Schools
+2026-06-08,GA,Gov,Undisclosed or vague,City of Acworth
+2026-06-07,IL,Edu,Malicious cause stated,Evanston Township HS
+2026-06-05,CA,Other,Malicious cause stated,Lewis Brisbois
+2026-06-05,GA,Finance,Malicious cause stated,YouLend US
+2026-06-04,MN,Gov,Undisclosed or vague,Kittson County
+2026-06-02,ND,Gov,Malicious cause stated,Bowman Parks & Rec
+2026-05-28,TX,Gov,Malicious cause stated,Nacogdoches County
+2026-05-24,WA,Gov,Malicious cause stated,Chelan County
+2026-05-22,CA,Edu,Malicious cause stated,Educational Testing Service
+2026-05-21,TN,Gov,Malicious cause stated,Town of Alexandria
+2026-05-21,MP,Gov,Undisclosed or vague,CNMI government email
+2026-05-19,MN,Edu,Malicious cause stated,Delano Public Schools
+2026-05-19,AL,Gov,Malicious cause stated,Scottsboro Police
+2026-05-15,MN,Other,Malicious cause stated,Chanhassen Dinner Theatres
+2026-05-14,TX,Other,Malicious cause stated,Krum Public Library
+2026-05-11,MI,Gov,Undisclosed or vague,City of Boyne City
+2026-05-11,OK,Gov,Malicious cause stated,Town of Mountain Park
+2026-05-08,TX,IT,Malicious cause stated,Stack Sports
+2026-05-06,MD,IT,Undisclosed or vague,IT Curves
+2026-05-04,PR,Other,Malicious cause stated,West Pharmaceutical
