@@ -10,12 +10,12 @@
 import { h, navigate, setMode, setDays, setDensity, state, clearCache, render } from "./core.js";
 import { cycleTheme } from "./theme.js";
 
-const SECTIONS = ["/", "/sources", "/credentials", "/payloads", "/sessions", "/tunnels", "/method"];
+const SECTIONS = ["/", "/sources", "/credentials", "/payloads", "/sessions", "/tunnels", "/method", "/trends"];
 
 const HELP = [
   ["/", "Search for an address, hash, credential or date"],
   ["?", "Show this list"],
-  ["1 to 7", "Go to a section"],
+  ["1 to 8", "Go to a section"],
   ["s or a", "Summary or analyst view of the overview"],
   ["w", "Step through the time windows"],
   ["d", "Compact or roomy table rows"],

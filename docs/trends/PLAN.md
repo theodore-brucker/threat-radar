@@ -1,0 +1,15 @@
+# Incident trends plan
+
+1. Migration `migrations/trends/001_trends.sql` creates incident, organization, vendor, actor_claim, cve, source_item, statement, incident_vendor, incident_cve, incident_claim and the weekly rollup tables; it sits in a subdirectory so `test_migrations` does not require registering it in `intel_worker.py`, and the trends job applies it.
+2. `trends/` package, stdlib only: `fetch.py` (conditional GET, ETag and Last-Modified kept in source_item state, 2 MB response cap), one collector module per source in SOURCES.md, and `seed.py` loading the two CSVs with source=seed, confidence=low, plus the Optimizely fan-out row.
+3. Dedupe key is sha256 of source and canonical URL, UNIQUE in source_item; inserts are batched in one transaction per collector run with `synchronous=NORMAL`.
+4. `classify.py` applies the keyword rules, then sends ambiguous items in batches of 20 to `claude -p --model haiku` with no tools enabled and a fixed rubric; only the three enum values are accepted, results are cached by item hash, and the step is skipped when the CLI or token is absent.
+5. statement rows record each stated cause with its date; time to cause is the first malicious or non-malicious statement minus the incident date, and a weekly pass re-classifies undisclosed incidents against items that arrived since.
+6. `rollup.py` builds weekly count with a least-squares trend, weekly share undisclosed, time-to-cause distribution, fan-out events (one vendor linked to two or more organizations or a stated customer count) and the national cluster flag (3 or more national-scale outages in any 5-day window).
+7. `bin/trends_worker.py` runs migrate, collect, classify, then the rollup only when the last one is over 24 hours old; it logs rows found and bytes written, refuses to start the day's run once 50 MB is logged for that day, and takes `--dry-run`.
+8. `deploy/systemd/radar-trends.service` and `.timer`: User=radar, every 2 hours, the same hardening as radar-intel, EnvironmentFile /etc/threat-radar.env; it needs a one-time `systemctl enable --now radar-trends.timer` after update.sh installs it.
+9. `app/routers/trends.py`, read-only, under /api/v1/trends/: summary, weekly series, incident/{id}, vendor/{slug}, organization/{slug}, and export/{type}/{value} in JSON and Markdown using the existing bundle shape; every number carries the row IDs behind it.
+10. Additive edits outside the new files: one include_router line in `app/main.py`, page routes in `app/shell.py`, a "Trends" nav item in `index.html`.
+11. Pages `trends.js` and `trend_entity.js` (incident, supplier and organization) with hand-drawn SVG charts and tooltips, tokens.css only, single column below 480px, all text through `h()` and `textContent`.
+12. `tests/test_trends.py` covers fetch with 304, dedupe, keyword rules, rollup arithmetic, the cluster flag, the API envelope and the read-only connection.
+13. Before enabling: confirm the ransomware.live api-pro path and header, and install the radar user's Claude Code credential.

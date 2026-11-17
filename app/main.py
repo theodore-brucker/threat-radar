@@ -28,6 +28,7 @@ app = FastAPI(title="Threat Radar", docs_url=None, redoc_url=None)
 
 from app.shell import router as shell_router, SECURITY_HEADERS, not_found  # noqa: E402
 from app.routers.site import router as site_router  # noqa: E402
+from app.routers.trends import router as trends_router  # noqa: E402
 
 
 @app.middleware("http")
@@ -43,6 +44,7 @@ async def security_headers(request, call_next):
 # untouched and still owns the whole /api/v1 surface.
 app.include_router(shell_router)
 app.include_router(site_router)
+app.include_router(trends_router)
 
 # Unknown page paths render the shell with a 404 status; the client shows the
 # not-found page. API and static misses are untouched.

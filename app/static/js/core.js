@@ -774,8 +774,8 @@ export function copyBtn(value) {
    Opening the menu is also what shows the size, which is worth knowing
    before pasting into a context window. */
 
-export function exportControl(type, id) {
-  const path = `/api/v1/export/${encodeURIComponent(type)}/${encodeURIComponent(id)}`;
+export function exportControl(type, id, base = "/api/v1/export") {
+  const path = `${base}/${encodeURIComponent(type)}/${encodeURIComponent(id)}`;
   let brief = true;
   try { brief = localStorage.getItem("tr.export.brief") !== "0"; } catch (err) { /* default */ }
   let text = null;
@@ -951,6 +951,7 @@ const ROUTES = {
   "/sessions": () => import("./pages/sessions.js"),
   "/tunnels": () => import("./pages/tunnels.js"),
   "/method": () => import("./pages/method.js"),
+  "/trends": () => import("./pages/trends.js"),
 };
 
 const PREFIXED = [
@@ -962,6 +963,9 @@ const PREFIXED = [
   ["/hassh/", () => import("./pages/entity.js")],
   ["/url/", () => import("./pages/entity.js")],
   ["/day/", () => import("./pages/entity.js")],
+  ["/incident/", () => import("./pages/trend_entity.js")],
+  ["/vendor/", () => import("./pages/trend_entity.js")],
+  ["/organization/", () => import("./pages/trend_entity.js")],
 ];
 
 /* An unknown path gets the not-found page, so a mistyped link cannot look like

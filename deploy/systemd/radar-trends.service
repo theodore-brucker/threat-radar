@@ -1,0 +1,58 @@
+[Unit]
+Description=Threat Radar incident trends worker (feeds, cause labels, weekly rollup)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=radar
+Group=radar
+WorkingDirectory=/opt/threat-radar
+# Holds TR_RANSOMWARE_LIVE_TOKEN and CLAUDE_CODE_OAUTH_TOKEN. Either may be
+# missing: the source or the model step is then skipped.
+EnvironmentFile=-/etc/threat-radar.env
+Environment=TR_APP=/opt/threat-radar
+Environment=TR_DB=/opt/threat-radar/data/radar.db
+# The claude CLI keeps its state under HOME, which the radar account does not
+# have; ProtectHome hides /home anyway, so it gets a directory under the
+# unit's state directory instead.
+Environment=HOME=/var/lib/radar-trends
+StateDirectory=radar-trends
+StateDirectoryMode=0700
+ExecStart=/opt/threat-radar/venv/bin/python /opt/threat-radar/bin/trends_worker.py
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=1800
+RuntimeDirectory=radar-trends
+RuntimeDirectoryMode=0750
+
+# Hardening, the same as radar-intel. This unit reaches the internet for the
+# feeds in docs/trends/SOURCES.md and, through the claude CLI, the model API.
+ReadWritePaths=/opt/threat-radar/data /var/lib/radar-trends
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+ProcSubset=pid
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target
