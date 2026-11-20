@@ -17,6 +17,16 @@ Lessons from running a live sensor:
 - Anything the spec creates takes the time of the apply unless `ctime` is set,
   so a node that claims months of uptime should not have home directories
   dated today.
+- Override every identity file Cowrie embeds in its shipped filesystem:
+  `/etc/hostname` and `/etc/hosts` (they still say `svr04` and `nas3`),
+  `/etc/issue`, `/etc/debian_version` and `/etc/resolv.conf`. Add
+  `/etc/lsb-release` if the persona is Ubuntu, because the shipped tree has
+  none. `bin/mirror-host.sh` covers `/proc` and the hardware commands.
+- Keep the SSH offer to algorithms Twisted implements, listed in the order
+  OpenSSH uses. A server claiming OpenSSH 9.6 still lacks `chacha20`, GCM,
+  ETM MACs, `sntrup761` and the strict key exchange marker, so the offer reads
+  as an administrator-restricted configuration, which is common on hardened
+  hosts.
 - Supply `/etc/passwd` and `/etc/group`. Without them Cowrie falls back to its
   shipped pair and renders uid 1000 as its old default user.
 - Place tokens in shared service paths rather than one user's home. `$HOME`

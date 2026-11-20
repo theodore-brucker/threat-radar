@@ -34,9 +34,25 @@ blocks the persona paths, so an overlaid checkout cannot commit them back here.
   since built-ins otherwise win over txtcmds in `getCommand()`.
   `factory-kex.patch` drops configured kex algorithms Twisted does not
   implement, instead of advertising them and dying at key exchange.
+  `factory-hostkeys.patch` advertises the RSA host key as `rsa-sha2-512` and
+  `rsa-sha2-256`, as OpenSSH 8.8 and later do. Cowrie otherwise offers
+  `ssh-rsa`, which no current OpenSSH server lists.
+  `shell-host-stats.patch` makes `uptime`, `w` and `free` read the host
+  figures that `bin/mirror-host.sh` copies into honeyfs (the service cannot
+  read `/proc` itself), prints `free -m` and `free -h` in procps units, and
+  makes `last` report wtmp beginning on the first of the month, the way a
+  monthly logrotate leaves it.
 - `systemd/` holds the unit and its drop-in for `cowrie.service`. The drop-in
   stops Cowrie from starting with a userdb it cannot load, because Cowrie would
   otherwise start and reject every login without logging an error.
+- `bin/mirror-host.sh` copies the host's kernel version, CPU and memory
+  and the output of `lscpu`, `nproc`, `lspci`, `df`, `mount` and `getconf`
+  into honeyfs and txtcmds. Cowrie's shipped filesystem answers those for
+  another machine (a Debian kernel in `/proc/version`, Debian lenny output
+  from `df`, `mount` and `dmesg`, a vim error from `top`), so a session that
+  asks the same question two ways got two answers. `static` runs as root
+  before each start through `systemd/cowrie.service.d/20-mirror-host.conf`,
+  and `proc` runs every minute from `systemd/cowrie-proc.timer`.
 - `nftables-radar.nft` redirects 22 to 2222 and confines the Cowrie uid to DNS,
   NTP, 80 and 443 outbound.
 - `persona.example/` holds a sample `cowrie.cfg` overlay, `fs_spec.json` and

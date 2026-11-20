@@ -1,0 +1,23 @@
+diff --git a/src/cowrie/ssh/factory.py b/src/cowrie/ssh/factory.py
+index e4942b2..0ae28cc 100644
+--- a/src/cowrie/ssh/factory.py
++++ b/src/cowrie/ssh/factory.py
+@@ -123,7 +123,17 @@ class CowrieSSHFactory(factory.SSHFactory):
+             t = shellTransport.HoneyPotSSHTransport()
+ 
+         t.ourVersionString = self.ourVersionString
+-        t.supportedPublicKeys = list(self.privateKeys.keys())
++        # --- threat-radar host key names (begin) ---
++        # OpenSSH 8.8 and later never offer ssh-rsa as a host key algorithm,
++        # only its SHA-2 signature names. Twisted maps both back to the RSA
++        # key when it signs, so only the advertised list changes.
++        t.supportedPublicKeys = []
++        for _k in self.privateKeys:
++            if _k == b"ssh-rsa":
++                t.supportedPublicKeys += [b"rsa-sha2-512", b"rsa-sha2-256"]
++            else:
++                t.supportedPublicKeys.append(_k)
++        # --- threat-radar host key names (end) ---
+ 
+         if not self.primes:
+             ske = t.supportedKeyExchanges[:]
