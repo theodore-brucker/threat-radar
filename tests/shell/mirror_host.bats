@@ -12,13 +12,12 @@ setup() {
   printf 'MemTotal:        1983712 kB\n' > "$MIRROR_PROC/meminfo"
   printf 'processor\t: 0\nmodel name\t: AMD EPYC-Rome Processor\n' > "$MIRROR_PROC/cpuinfo"
   printf 'Linux version 6.8.0-117-generic (buildd@lcy02) #117-Ubuntu SMP\n' > "$MIRROR_PROC/version"
-  printf '/dev/sda1 / ext4 rw 0 0\n/dev/sda1 /opt/cowrie/var ext4 rw 0 0\n' > "$MIRROR_PROC/mounts"
   printf '[shell]\nkernel_version = 6.8.0-117-generic\n' > "$COWRIE/cowrie.cfg"
   stub lscpu 'echo "CPU(s): 1"'
   stub nproc 'echo 1'
   stub lspci 'echo "00:00.0 Host bridge: Intel Corporation 82G33/G31/P35/P31 Express DRAM Controller"'
   stub df 'printf "Filesystem Size\n/dev/sda1 38G\noverlay 38G /var/lib/docker/x\n"'
-  stub mount 'printf "/dev/sda1 on / type ext4\ntmpfs on /run/user type tmpfs\n"'
+  stub mount 'printf "/dev/sda1 on / type ext4\n/dev/sda1 on /opt/cowrie/var type ext4\n"'
   stub getconf 'echo 64'
   PATH="$BATS_TEST_TMPDIR/bin:$PATH"
 }
@@ -43,7 +42,8 @@ stub() { printf '#!/bin/sh\n%s\n' "$2" > "$BATS_TEST_TMPDIR/bin/$1"; chmod +x "$
   grep -q "AMD EPYC" "$COWRIE/honeyfs/proc/cpuinfo"
   grep -q "^/dev/sda1 38G" "$T/df"
   ! grep -q docker "$T/df"
-  ! grep -q cowrie "$COWRIE/honeyfs/proc/mounts"
+  grep -q "on / type ext4" "$T/mount"
+  ! grep -q cowrie "$T/mount"
   grep -q "Operation not permitted" "$T/dmesg"
   [ -f "$COWRIE/honeyfs/proc/uptime" ]
 }

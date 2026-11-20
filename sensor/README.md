@@ -45,7 +45,7 @@ blocks the persona paths, so an overlaid checkout cannot commit them back here.
 - `systemd/` holds the unit and its drop-in for `cowrie.service`. The drop-in
   stops Cowrie from starting with a userdb it cannot load, because Cowrie would
   otherwise start and reject every login without logging an error.
-- `bin/mirror-host.sh` copies the host's kernel version, CPU, memory, mounts
+- `bin/mirror-host.sh` copies the host's kernel version, CPU and memory
   and the output of `lscpu`, `nproc`, `lspci`, `df`, `mount` and `getconf`
   into honeyfs and txtcmds. Cowrie's shipped filesystem answers those for
   another machine (a Debian kernel in `/proc/version`, Debian lenny output

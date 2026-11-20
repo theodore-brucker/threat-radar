@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Copy the sensor host's own kernel and hardware facts into the persona.
 #
-#   mirror-host.sh static   /proc/cpuinfo, /proc/version, /proc/mounts and the
-#                           output of lscpu, nproc, lspci, df, mount, getconf,
-#                           dmesg and top. Run before Cowrie starts.
+#   mirror-host.sh static   /proc/cpuinfo, /proc/version and the output of
+#                           lscpu, nproc, lspci, df, mount, getconf, dmesg
+#                           and top. Run before Cowrie starts.
 #   mirror-host.sh proc     /proc/uptime, /proc/loadavg and /proc/meminfo.
 #                           Run every minute by cowrie-proc.timer.
 #
@@ -63,7 +63,8 @@ do_proc() {
 do_static() {
   put "$HONEYFS/proc/cpuinfo" < "$PROC/cpuinfo"
   put "$HONEYFS/proc/version" < "$PROC/version"
-  grep -Ev "$HIDE" "$PROC/mounts" | put "$HONEYFS/proc/mounts"
+  # /proc/mounts is a symlink in Cowrie's tree, so a copy at that path is
+  # never read. The mount command below answers the same question.
   capture "$TXT/usr/bin/lscpu" lscpu
   capture "$TXT/usr/bin/nproc" nproc
   capture "$TXT/usr/bin/lspci" lspci
