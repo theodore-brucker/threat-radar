@@ -315,3 +315,21 @@ class TimeCutTests(CutoverCase):
                 fh.write(b"x")
         listed = cutover.old_samples(self.con, day.isoformat() + "T05:00:00", self.sample_dir)
         self.assertEqual(listed, [sha(1), sha(2), sha(3)])
+
+
+class StageLabelTests(CutoverCase):
+    def test_stage_columns_match_the_stages_the_dashboard_defines(self):
+        self.assertEqual(sorted(cutover.STAGE_NAMES), list(range(len(cutover.exportmod.STAGES))))
+
+    def test_a_flagged_transfer_lands_in_the_last_column(self):
+        self.build()
+        self.con.execute(
+            "INSERT OR REPLACE INTO payload_intel(indicator, kind, source, verdict, malicious, checked_at)"
+            " VALUES(?, 'sha256', 'virustotal', 'malicious', 12, ?)", (sha(2), _stamp(TODAY, 5)))
+        self.con.commit()
+        self.rebuild()
+        rows = cutover.stage_rows(self.con, cutover.segments(
+            self.con, (TODAY - dt.timedelta(days=5)).isoformat(),
+            (TODAY + dt.timedelta(days=1)).isoformat()))
+        totals = {k: sum(r[k] for r in rows) for k in rows[0] if k != "epoch"}
+        self.assertEqual(totals["4 moved a flagged file"], 2)
