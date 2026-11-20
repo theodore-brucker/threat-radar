@@ -224,10 +224,12 @@ class ContentTests(ExportCase):
         bundle = self.bundle("/api/v1/export/ip/" + IP)
         ctx = bundle["context"]
         self.assertEqual([s["stage"] for s in ctx["stages"]], [0, 1, 2, 3, 4])
-        self.assertEqual(ctx["persona"]["name"], "Compute node")
+        live = self.con.execute(
+            "SELECT name FROM persona_epochs ORDER BY start_day DESC LIMIT 1").fetchone()[0]
+        self.assertEqual(ctx["persona"]["name"], live)
         text = self.md("/api/v1/export/ip/" + IP)
         self.assertIn("The shell is emulated.", text)
-        self.assertIn("presented itself as: Compute node", text)
+        self.assertIn("presented itself as: " + live, text)
 
 
 class LimitTests(ExportCase):
