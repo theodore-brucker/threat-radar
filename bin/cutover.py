@@ -12,7 +12,9 @@ elsewhere first; this tool does not copy anything off the host.
   samples  List captured samples that were only sighted before the cutover,
            one sha256 per line, for packing and removal.
   purge    Delete everything dated before the cutover. Dry run unless
-           --apply. Lifetime tables are cleared and rebuilt by the next
+           --apply. The cutover is a UTC day or a UTC time; with a time,
+           rows for that day are removed whole and rebuilt by the next
+           worker pass from the raw events after the time. Lifetime tables are cleared and rebuilt by the next
            intel worker pass. Lookups, submissions and the incident trends
            tables are kept, because they are not tied to the period.
 
@@ -76,6 +78,44 @@ def parse_day(value):
         return dt.date.fromisoformat(value).isoformat()
     except ValueError:
         raise argparse.ArgumentTypeError(f"not a YYYY-MM-DD day: {value!r}")
+
+
+def parse_cut(value):
+    """A UTC day (YYYY-MM-DD) or a UTC time (YYYY-MM-DDTHH:MM[:SS][Z]).
+
+    A time comes back as YYYY-MM-DDTHH:MM:SS with no zone suffix. Raw event
+    timestamps carry fractional seconds before the Z, and '.' sorts below
+    'Z', so a bound ending in Z would misplace events in its own second.
+    """
+    text = value.strip().rstrip("Zz")
+    if len(text) == 10:
+        return parse_day(text)
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M"):
+        try:
+            return dt.datetime.strptime(text, fmt).strftime("%Y-%m-%dT%H:%M:%S")
+        except ValueError:
+            continue
+    raise argparse.ArgumentTypeError(
+        f"not a YYYY-MM-DD day or YYYY-MM-DDTHH:MM[:SS] UTC time: {value!r}")
+
+
+def raw_bound(con, cut):
+    """The value raw_events.ts and payload_sightings.ts compare against."""
+    ts = db.TsExpr(con)
+    if len(cut) == 10:
+        return ts.day_range(cut)[0]
+    if ts.epoch:
+        return dt.datetime.strptime(cut, "%Y-%m-%dT%H:%M:%S").replace(
+            tzinfo=dt.timezone.utc).timestamp()
+    return cut
+
+
+def first_whole_day(cut):
+    """Per-day rows on this day and later are kept as they are. A time cut
+    makes its own day partial, so that day's rows go too and are rebuilt."""
+    if len(cut) == 10:
+        return cut
+    return (dt.date.fromisoformat(cut[:10]) + dt.timedelta(days=1)).isoformat()
 
 
 def has(con, table):
@@ -499,8 +539,7 @@ def old_samples(con, before, sample_dir):
     """Samples on disk with no sighting on or after the cutover."""
     if not os.path.isdir(sample_dir):
         return []
-    ts = db.TsExpr(con)
-    hi, _ = ts.day_range(before)
+    hi = raw_bound(con, before)
     kept = {r[0] for r in con.execute(
         "SELECT DISTINCT shasum FROM payload_sightings WHERE ts >= ?", (hi,))}
     names = sorted(n for n in os.listdir(sample_dir)
@@ -526,8 +565,8 @@ def cmd_samples(args):
 # ---------------------------------------------------------------------------
 
 def plan(con, before):
-    ts = db.TsExpr(con)
-    hi, _ = ts.day_range(before)
+    hi = raw_bound(con, before)
+    keep_day = first_whole_day(before)
     counts = {"raw_events": con.execute(
         "SELECT COUNT(*) FROM raw_events WHERE ts < ?", (hi,)).fetchone()[0]}
     if has(con, "payload_sightings"):
@@ -536,7 +575,7 @@ def plan(con, before):
     for t in DAY_TABLES:
         if has(con, t):
             counts[t] = con.execute(f"SELECT COUNT(*) FROM {t} WHERE day < ?",
-                                    (before,)).fetchone()[0]
+                                    (keep_day,)).fetchone()[0]
     if has(con, "outage_windows"):
         counts["outage_windows"] = con.execute(
             "SELECT COUNT(*) FROM outage_windows WHERE COALESCE(end_day, start_day) < ?",
@@ -567,7 +606,7 @@ def purge(con, before, vacuum=False):
         con.execute("DELETE FROM payload_sightings WHERE ts < ?", (hi,))
     for t in DAY_TABLES:
         if has(con, t):
-            con.execute(f"DELETE FROM {t} WHERE day < ?", (before,))
+            con.execute(f"DELETE FROM {t} WHERE day < ?", (first_whole_day(before),))
     if has(con, "outage_windows"):
         con.execute("DELETE FROM outage_windows WHERE COALESCE(end_day, start_day) < ?",
                     (before,))
@@ -594,9 +633,9 @@ def purge(con, before, vacuum=False):
 
 
 def cmd_purge(args):
-    today = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    if args.before > today:
-        log(f"refusing: {args.before} is after today ({today} UTC), so the purge would "
+    now = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    if args.before > now[:len(args.before)]:
+        log(f"refusing: {args.before} is later than now ({now} UTC), so the purge would "
             f"also remove data from the period it is meant to keep")
         return 2
     if not args.apply:
@@ -627,12 +666,13 @@ def main(argv=None):
     r.add_argument("--out", required=True, help="directory for the .md and .json files")
 
     s = sub.add_parser("samples", help="list samples sighted only before the cutover")
-    s.add_argument("--before", required=True, type=parse_day)
+    s.add_argument("--before", required=True, type=parse_cut)
     s.add_argument("--sample-dir", default=SAMPLE_DIR)
     s.add_argument("--out", help="write the list here instead of stdout")
 
     p = sub.add_parser("purge", help="delete everything dated before the cutover")
-    p.add_argument("--before", required=True, type=parse_day, help="first day to keep")
+    p.add_argument("--before", required=True, type=parse_cut,
+                   help="first UTC day, or UTC time YYYY-MM-DDTHH:MM, to keep")
     p.add_argument("--apply", action="store_true", help="delete; without it, only count")
     p.add_argument("--vacuum", action="store_true", help="VACUUM afterwards to return space")
 

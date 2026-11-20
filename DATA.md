@@ -47,7 +47,8 @@ never counted.
 When the sensor changes enough that earlier data is a different measurement
 (a new address or persona), `bin/cutover.py` closes the earlier period: it
 writes a report on it, lists samples sighted only in it, and purges every row
-dated before the cutover once the database has been archived elsewhere.
+dated before the cutover (a UTC day or time) once the database has been
+archived elsewhere.
 Lookups, submissions and the incident trends tables are kept. The purge sets
 a floor that ingest honours, so a spool rescan cannot restore removed events.
 
