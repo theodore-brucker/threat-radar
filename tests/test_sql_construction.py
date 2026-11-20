@@ -37,6 +37,8 @@ PER_FILE = {
     "app/analytics/payloads.py": {"' AND '.join(where)"},         # fixed "day >= ?" style fragments
     "app/analytics/spikes.py": {"n"},                             # len() of the baseline window
     "app/routers/site.py": {"name"},                              # "country" or a schema column name
+    "bin/cutover.py": {"column", "t"},                             # "country"/"asn" from its two callers;
+                                                                  # t iterates fixed table-name tuples
     "bin/intel_worker.py": {"asn_sel", "cc_expr", "org_expr",     # built from sc[...] column names
                             "join", "day_of_min", "table"},       # and literal table names
     "prune.py": {"t"},                                            # iterates a fixed tuple of table names
