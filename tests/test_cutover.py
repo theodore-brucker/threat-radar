@@ -247,3 +247,71 @@ class IngestFloorTests(CutoverCase):
         self.assertIsNone(ingest.data_floor(self.con))
         self.assertFalse(ingest._before_floor("2020-01-01T00:00:00Z", None))
         self.assertFalse(ingest._before_floor("", "2026-01-15"))
+
+
+class TimeCutTests(CutoverCase):
+    def build_day(self):
+        day = TODAY - dt.timedelta(days=1)
+        self.session(TODAY - dt.timedelta(days=3), OLD_IP, "aaaa0001", "oldonly", "oldpass", sha(1))
+        # Same day, either side of 03:00: 01:00-04:00 for the early session,
+        # and an early-only second address so the rebuild can be checked.
+        self.session(day, "192.0.2.77", "cccc0001", "earlyday", "earlypass", sha(3))
+        late = _stamp(day, 9)
+        self.event(late, "cowrie.session.connect", "dddd0001", NEW_IP, dst_port=22)
+        self.event(late, "cowrie.login.success", "dddd0001", NEW_IP,
+                   username="lateday", password="latepass")
+        self.event(_stamp(day, 10), "cowrie.session.closed", "dddd0001", NEW_IP, duration=2.0)
+        self.con.commit()
+        self.rebuild()
+        return day
+
+    def test_a_time_cut_keeps_only_events_after_it_and_rebuilds_that_day(self):
+        day = self.build_day()
+        cut = cutover.parse_cut(day.isoformat() + "T05:00Z")
+        self.assertEqual(cut, day.isoformat() + "T05:00:00")
+        self.assertEqual(self.count("SELECT COUNT(*) FROM asn_ip_daily WHERE day = ? AND src_ip = ?",
+                                    (day.isoformat(), "192.0.2.77")), 1)
+
+        cutover.purge(self.con, cut)
+        ips = {r[0] for r in self.con.execute("SELECT DISTINCT src_ip FROM raw_events")}
+        self.assertEqual(ips, {NEW_IP})
+        self.assertEqual(self.count("SELECT COUNT(*) FROM asn_ip_daily WHERE day <= ?",
+                                    (day.isoformat(),)), 0)
+        self.assertEqual(self.con.execute(
+            "SELECT value FROM insights_state WHERE key = 'data_floor'").fetchone()[0], cut)
+
+        self.rebuild()
+        self.assertEqual(
+            [r[0] for r in self.con.execute(
+                "SELECT src_ip FROM asn_ip_daily WHERE day = ?", (day.isoformat(),))], [NEW_IP])
+        self.assertEqual({r[0] for r in self.con.execute("SELECT username FROM cred_pairs")},
+                         {"lateday"})
+
+    def test_a_time_later_than_now_is_refused(self):
+        self.build_day()
+        soon = (dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=5)).strftime(
+            "%Y-%m-%dT%H:%M")
+        with mock.patch("builtins.print"):
+            rc = cutover.main(["--db", self.db_path, "purge", "--before", soon, "--apply"])
+        self.assertEqual(rc, 2)
+
+    def test_bad_cut_values_are_rejected(self):
+        for bad in ("2026-13-01", "yesterday", "2026-11-20 14:00", "2026-11-20T25:00"):
+            with self.assertRaises(Exception):
+                cutover.parse_cut(bad)
+
+    def test_ingest_honours_a_time_floor(self):
+        floor = "2026-02-01T10:00:00"
+        self.assertTrue(ingest._before_floor("2026-02-01T09:59:59.999999Z", floor))
+        self.assertFalse(ingest._before_floor("2026-02-01T10:00:00.000001Z", floor))
+        self.assertFalse(ingest._before_floor("2026-02-01T10:00:00Z", floor))
+        self.assertTrue(ingest._before_floor("2026-01-31T23:00:00Z", "2026-02-01"))
+        self.assertFalse(ingest._before_floor("garbage", floor))
+
+    def test_samples_respect_a_time_cut(self):
+        day = self.build_day()
+        for n in (1, 2, 3):
+            with open(os.path.join(self.sample_dir, sha(n)), "wb") as fh:
+                fh.write(b"x")
+        listed = cutover.old_samples(self.con, day.isoformat() + "T05:00:00", self.sample_dir)
+        self.assertEqual(listed, [sha(1), sha(2), sha(3)])

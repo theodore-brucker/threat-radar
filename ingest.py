@@ -47,9 +47,13 @@ def data_floor(conn):
 
 
 def _before_floor(ts: str, floor) -> bool:
-    # Only an ISO date prefix is compared. A line with no usable timestamp is
-    # kept, so a malformed line is never dropped silently.
-    return bool(floor) and len(ts) >= 10 and ts[4] == "-" and ts[:10] < floor
+    # The floor is a UTC day (YYYY-MM-DD) or time (YYYY-MM-DDTHH:MM:SS), and
+    # the event's timestamp is compared to the same length, so fractional
+    # seconds and the zone suffix play no part. A line with no usable
+    # timestamp is kept, so a malformed line is never dropped silently.
+    if not floor or len(ts) < len(floor) or len(ts) < 10 or ts[4] != "-":
+        return False
+    return ts[:len(floor)] < floor
 
 
 def ingest_line(conn, line: str, floor=None) -> None:

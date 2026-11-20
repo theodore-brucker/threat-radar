@@ -1,22 +1,13 @@
--- 016_file_gateway.sql  (2026-11-21)
+-- 016_file_gateway.sql  (2026-11-20)
 --
--- The sensor presents a file-transfer gateway from 2026-11-21. Banner,
--- accounts, honeyfs and the SSH algorithm offer all changed with it, so it
--- is a new epoch. The collector was cut over the same day with
--- bin/cutover.py, and earlier data lives in the archive copy.
+-- The sensor presents a file-transfer gateway from 2026-11-20. Its epoch is
+-- recorded by 017, which names the day the collector was cut over.
 --
 -- v_cred_attempts is redefined so the persona tier counts accounts a file
 -- exchange host would plausibly hold. Nothing is planted for these names by
 -- the userdb generator, so the tier measures unsolicited targeting of
 -- file-transfer accounts. It replaces the compute-node list from 008, which
 -- this file overrides because the worker applies migrations in order.
-
-INSERT OR IGNORE INTO persona_epochs(start_day, name, note, created_at) VALUES
-  ('2026-11-21', 'File-transfer gateway',
-   'Sensor presents a file-transfer gateway persona. Banner, accounts, '
-   || 'honeyfs and the SSH algorithm offer changed with it. Data before this '
-   || 'day was archived off the collector.',
-   '2026-11-21');
 
 DROP VIEW IF EXISTS v_cred_attempts;
 CREATE VIEW v_cred_attempts AS
