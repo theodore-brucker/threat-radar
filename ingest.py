@@ -29,7 +29,30 @@ def db_connect():
     return conn
 
 
-def ingest_line(conn, line: str) -> None:
+def data_floor(conn):
+    """First UTC day the database keeps, set by bin/cutover.py purge.
+
+    Spool files hold several days and are rescanned from the start when they
+    shrink or rotate, so without this an event removed by a purge comes back
+    on the next rescan. Returns None until a purge has run, and on a database
+    the worker has not migrated yet.
+    """
+    try:
+        row = conn.execute(
+            "SELECT value FROM insights_state WHERE key = 'data_floor'"
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    return row[0] if row and row[0] else None
+
+
+def _before_floor(ts: str, floor) -> bool:
+    # Only an ISO date prefix is compared. A line with no usable timestamp is
+    # kept, so a malformed line is never dropped silently.
+    return bool(floor) and len(ts) >= 10 and ts[4] == "-" and ts[:10] < floor
+
+
+def ingest_line(conn, line: str, floor=None) -> None:
     line = line.strip()
     if not line:
         return
@@ -44,6 +67,8 @@ def ingest_line(conn, line: str) -> None:
     session = str(ev.get("session", ""))[:64]
     src_ip = str(ev.get("src_ip", ""))[:64]
     ts = str(ev.get("timestamp", ""))[:40]
+    if _before_floor(ts, floor):
+        return
     cur = conn.execute(
         "INSERT OR IGNORE INTO raw_events (line_hash, eventid, session, src_ip, ts, payload)"
         " VALUES (?, ?, ?, ?, ?, ?)",
@@ -73,6 +98,7 @@ def process_file(conn, path: str) -> int:
     if size == offset:
         return 0
     n = 0
+    floor = data_floor(conn)
     # Bytes, not text. The offset has to track the file exactly, because the
     # pull appends raw bytes and the next pass resumes from here. Text mode
     # advanced by the re-encoded length of each decoded line, which overshoots
@@ -84,7 +110,7 @@ def process_file(conn, path: str) -> int:
         for raw in f:
             if not raw.endswith(b"\n"):
                 break  # partial trailing line; pick it up next pass
-            ingest_line(conn, raw.decode("utf-8", "replace"))
+            ingest_line(conn, raw.decode("utf-8", "replace"), floor)
             offset += len(raw)
             n += 1
     conn.execute(
