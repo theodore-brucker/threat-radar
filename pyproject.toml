@@ -85,6 +85,7 @@ ignore_names = ["row_factory", "hour"]
 "app/trends/seed.py" = 90
 "app/trends/store.py" = 95
 "bin/build_userdb.py" = 70
+"bin/cutover.py" = 85
 "bin/intel_worker.py" = 65
 "bin/trends_worker.py" = 90
 "enrich.py" = 65

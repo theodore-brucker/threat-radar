@@ -14,6 +14,7 @@ from unittest import mock
 from tests import fixtures
 from tests.support import sha
 from tests.test_api_routes import RouteCase, b64u
+from app.analytics import db
 from app.analytics import export as exportmod
 from app.analytics import sessions as sessmod
 
@@ -225,7 +226,8 @@ class ContentTests(ExportCase):
         ctx = bundle["context"]
         self.assertEqual([s["stage"] for s in ctx["stages"]], [0, 1, 2, 3, 4])
         live = self.con.execute(
-            "SELECT name FROM persona_epochs ORDER BY start_day DESC LIMIT 1").fetchone()[0]
+            "SELECT name FROM persona_epochs WHERE start_day <= ?"
+            " ORDER BY start_day DESC LIMIT 1", (db.utcnow()[:10],)).fetchone()[0]
         self.assertEqual(ctx["persona"]["name"], live)
         text = self.md("/api/v1/export/ip/" + IP)
         self.assertIn("The shell is emulated.", text)

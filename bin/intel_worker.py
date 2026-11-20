@@ -56,6 +56,7 @@ MIGRATIONS = [
     os.path.join(APP_DIR, "migrations", "013_contributions.sql"),
     os.path.join(APP_DIR, "migrations", "014_drop_redundant_index.sql"),
     os.path.join(APP_DIR, "migrations", "015_us_address.sql"),
+    os.path.join(APP_DIR, "migrations", "016_file_gateway.sql"),
 ]
 # The service account does not own the repository, so the lock lives in the
 # unit's RuntimeDirectory. The fallback for a run by hand is the database's
