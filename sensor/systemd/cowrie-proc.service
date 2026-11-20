@@ -1,0 +1,11 @@
+# /etc/systemd/system/cowrie-proc.service
+#
+# Copies the host's uptime, load average and memory figures into the persona
+# so uptime, w, free and cat /proc/... agree. cowrie.service cannot read them
+# itself (ProcSubset=pid). See bin/mirror-host.sh.
+[Unit]
+Description=Copy host uptime, load and memory into the Cowrie persona
+
+[Service]
+Type=oneshot
+ExecStart=/opt/cowrie/bin/mirror-host.sh proc

@@ -1,0 +1,204 @@
+diff --git a/src/cowrie/commands/base.py b/src/cowrie/commands/base.py
+index 96aae2b..ab0f138 100644
+--- a/src/cowrie/commands/base.py
++++ b/src/cowrie/commands/base.py
+@@ -99,7 +99,7 @@ commands["help"] = Command_help
+ class Command_w(HoneyPotCommand):
+     def call(self) -> None:
+         self.write(
+-            f" {time.strftime('%H:%M:%S')} up {utils.uptime(self.protocol.uptime())},  1 user,  load average: 0.00, 0.00, 0.00\n"
++            f" {time.strftime('%H:%M:%S')} up {utils.uptime(self.protocol.uptime())},  1 user,  load average: {utils.host_loadavg()}\n"
+         )
+         self.write(
+             "USER     TTY      FROM              LOGIN@   IDLE   JCPU   PCPU WHAT\n"
+diff --git a/src/cowrie/commands/free.py b/src/cowrie/commands/free.py
+index 705981d..8e37e59 100644
+--- a/src/cowrie/commands/free.py
++++ b/src/cowrie/commands/free.py
+@@ -11,10 +11,22 @@ from __future__ import annotations
+ import getopt
+ from math import floor
+ 
++from cowrie.core import utils
+ from cowrie.shell.command import HoneyPotCommand
+ 
+ commands = {}
+ 
++
++def _human_kib(kib: int) -> str:
++    """A KiB figure the way procps-ng 4 prints it with -h (threat-radar)."""
++    if kib <= 0:
++        return "0B"
++    value, units, i = float(kib), ["Ki", "Mi", "Gi", "Ti"], 0
++    while value >= 1024 and i < len(units) - 1:
++        value /= 1024
++        i += 1
++    return f"{value:.1f}{units[i]}" if value < 10 else f"{int(value)}{units[i]}"
++
+ FREE_OUTPUT = """              total        used        free      shared  buff/cache   available
+ Mem:{MemTotal:>15}{calc_total_used:>12}{MemFree:>12}{Shmem:>12}{calc_total_buffers_and_cache:>12}{MemAvailable:>12}
+ Swap:{SwapTotal:>14}{calc_swap_used:>12}{SwapFree:>12}
+@@ -66,23 +78,16 @@ class Command_free(HoneyPotCommand):
+         )
+ 
+         if fmt == "megabytes":
+-            # Transform KB to MB
++            # threat-radar: procps reports MiB, so divide by 1024
+             for key, value in raw_mem_stats.items():
+-                raw_mem_stats[key] = int(value / 1000)
++                raw_mem_stats[key] = int(value / 1024)
+ 
+         if fmt == "human":
+-            magnitude = ["B", "M", "G", "T", "Z"]
+-            human_mem_stats = {}
+-            for key, value in raw_mem_stats.items():
+-                current_magnitude = 0
+-
+-                # Keep dividing until we get a sane magnitude
+-                while value >= 1000 and current_magnitude < len(magnitude):
+-                    value = floor(float(value / 1000))
+-                    current_magnitude += 1
+-
+-                # Format to string and append value with new magnitude
+-                human_mem_stats[key] = str(f"{value:g}{magnitude[current_magnitude]}")
++            # threat-radar: procps-ng 4 prints binary units with one decimal
++            # below ten (1.9Gi, 694Mi, 0B), not decimal units from bytes.
++            human_mem_stats = {
++                key: _human_kib(value) for key, value in raw_mem_stats.items()
++            }
+ 
+             self.write(FREE_OUTPUT.format(**human_mem_stats))
+         else:
+@@ -103,14 +108,15 @@ class Command_free(HoneyPotCommand):
+             "MemAvailable",
+         ]
+         mem_info_map: dict[str, int] = {}
++        # threat-radar host stats: the honeyfs copy of the host's meminfo,
++        # because the service cannot read /proc/meminfo. See core/utils.
+         try:
+-            with open("/proc/meminfo") as proc_file:
+-                for line in proc_file:
+-                    tokens = line.split(":")
++            for line in utils.host_meminfo_lines():
++                tokens = line.split(":")
+ 
+-                    # Later we are going to do some math on those numbers, better not include uneeded keys for performance
+-                    if tokens[0] in needed_keys:
+-                        mem_info_map[tokens[0]] = int(tokens[1].lstrip().split(" ")[0])
++                # Later we are going to do some math on those numbers, better not include uneeded keys for performance
++                if tokens[0] in needed_keys:
++                    mem_info_map[tokens[0]] = int(tokens[1].lstrip().split(" ")[0])
+         except Exception:
+             pass
+ 
+diff --git a/src/cowrie/commands/last.py b/src/cowrie/commands/last.py
+index b871166..d1c18db 100644
+--- a/src/cowrie/commands/last.py
++++ b/src/cowrie/commands/last.py
+@@ -29,7 +29,7 @@ class Command_last(HoneyPotCommand):
+                 "pts/0",
+                 self.protocol.clientIP,
+                 time.strftime(
+-                    "%a %b %d %H:%M", time.localtime(self.protocol.logintime)
++                    "%a %b %e %H:%M", time.localtime(self.protocol.logintime)
+                 ),
+             )
+         )
+@@ -38,9 +38,14 @@ class Command_last(HoneyPotCommand):
+         self.write(
+             "wtmp begins {}\n".format(
+                 time.strftime(
+-                    "%a %b %d %H:%M:%S %Y",
++                    "%a %b %e %H:%M:%S %Y",
++                    # threat-radar: logrotate rotates wtmp monthly, so it
++                    # begins just after midnight on the first of the month.
+                     time.localtime(
+-                        self.protocol.logintime // (3600 * 24) * (3600 * 24) + 63
++                        time.mktime(
++                            time.localtime(self.protocol.logintime)[:2]
++                            + (1, 0, 0, 3, 0, 0, -1)
++                        )
+                     ),
+                 )
+             )
+diff --git a/src/cowrie/commands/uptime.py b/src/cowrie/commands/uptime.py
+index cae32bd..289fb04 100644
+--- a/src/cowrie/commands/uptime.py
++++ b/src/cowrie/commands/uptime.py
+@@ -16,8 +16,10 @@ commands = {}
+ class Command_uptime(HoneyPotCommand):
+     def call(self) -> None:
+         self.write(
+-            "{}  up {},  1 user,  load average: 0.00, 0.00, 0.00\n".format(
+-                time.strftime("%H:%M:%S"), utils.uptime(self.protocol.uptime())
++            "{}  up {},  1 user,  load average: {}\n".format(
++                time.strftime("%H:%M:%S"),
++                utils.uptime(self.protocol.uptime()),
++                utils.host_loadavg(),
+             )
+         )
+ 
+diff --git a/src/cowrie/core/utils.py b/src/cowrie/core/utils.py
+index c3f69ba..503f524 100644
+--- a/src/cowrie/core/utils.py
++++ b/src/cowrie/core/utils.py
+@@ -90,6 +90,42 @@ def tail(the_file: BinaryIO, lines_2find: int = 20) -> list[bytes]:
+     # 21 to ensure we don't get a half line
+ 
+ 
++# --- threat-radar host stats (begin) ---
++# cowrie.service runs with ProcSubset=pid, so the host's /proc/uptime,
++# /proc/loadavg and /proc/meminfo cannot be read from inside it. A root timer
++# on the sensor copies them into honeyfs, and these read them from there, so
++# uptime, w, free and cat agree with each other.
++def _honeyfs_text(relpath: str) -> str:
++    from cowrie.shell.honeyfs import read_honeyfs_bytes
++
++    try:
++        return read_honeyfs_bytes(relpath).decode("ascii", "replace")
++    except Exception:
++        return ""
++
++
++def host_uptime() -> float | None:
++    try:
++        return float(_honeyfs_text("proc/uptime").split()[0])
++    except (IndexError, ValueError):
++        return None
++
++
++def host_loadavg() -> str:
++    fields = _honeyfs_text("proc/loadavg").split()[:3]
++    try:
++        return ", ".join(f"{float(v):.2f}" for v in fields) if len(fields) == 3 else "0.00, 0.00, 0.00"
++    except ValueError:
++        return "0.00, 0.00, 0.00"
++
++
++def host_meminfo_lines() -> list[str]:
++    return _honeyfs_text("proc/meminfo").splitlines()
++
++
++# --- threat-radar host stats (end) ---
++
++
+ def uptime(total_seconds: float) -> str:
+     """
+     Gives a human-readable uptime string
+diff --git a/src/cowrie/shell/protocol.py b/src/cowrie/shell/protocol.py
+index 7063135..4503041 100644
+--- a/src/cowrie/shell/protocol.py
++++ b/src/cowrie/shell/protocol.py
+@@ -281,6 +281,12 @@ class HoneyPotBaseProtocol(insults.TerminalProtocol, TimeoutMixin):
+         """
+         Uptime
+         """
++        # --- threat-radar host stats ---
++        from cowrie.core.utils import host_uptime
++
++        host = host_uptime()
++        if host is not None:
++            return host
+         pt = self.getProtoTransport()
+         r = time.time() - pt.factory.starttime
+         return r

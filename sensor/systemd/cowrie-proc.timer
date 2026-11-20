@@ -1,0 +1,11 @@
+# /etc/systemd/system/cowrie-proc.timer
+[Unit]
+Description=Refresh host figures in the Cowrie persona every minute
+
+[Timer]
+OnBootSec=20s
+OnUnitActiveSec=60s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
