@@ -63,9 +63,11 @@ FLOOR_KEY = "data_floor"
 TOP = 30
 BATCH = 20000
 
+# Short column labels for the per-day stages, in the order of export.STAGES
+# (0 to 4). source_stage_daily stores exactly these five.
 STAGE_NAMES = {
-    0: "connected only", 1: "tried to log in", 2: "logged in",
-    3: "ran commands", 4: "moved a file", 5: "file flagged malicious",
+    0: "connected only", 1: "authenticated", 2: "ran commands",
+    3: "moved a file", 4: "moved a flagged file",
 }
 
 
