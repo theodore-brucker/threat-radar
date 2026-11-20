@@ -145,6 +145,16 @@ def get_state(con, key, default=None):
     return row[0] if row else default
 
 
+def data_floor(con) -> str:
+    """The cutover set by bin/cutover.py purge, as a UTC day or time, or ''.
+
+    Tables the purge keeps (submissions, lookups) still hold rows from before
+    it. Views that report on the collector's period compare against this, and
+    '' compares below every timestamp, so nothing is hidden until a purge.
+    """
+    return get_state(con, "data_floor") or ""
+
+
 def set_state(con, key, value):
     con.execute(
         "INSERT INTO insights_state(key,value,updated_at) VALUES(?,?,?) "

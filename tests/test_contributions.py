@@ -6,6 +6,7 @@ import unittest
 
 from tests.support import DBTestCase, iso, sha
 from app.analytics import contributions as contrib
+from app.analytics import db
 
 
 class VerifyFirstTests(unittest.TestCase):
@@ -128,3 +129,41 @@ class ContributionListTests(DBTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DataFloorTests(DBTestCase):
+    """Uploads from before a cutover stay stored for deduplication but leave
+    every view that reports on the collector's period."""
+
+    FLOOR = "2026-11-20T14:06:00"
+
+    def setUp(self):
+        super().setUp()
+        self.old, self.new = sha(320), sha(321)
+        self.add_submission(self.old, "virustotal", "submitted",
+                            submitted_at="2026-11-19T10:00:00Z")
+        self.add_submission(self.old, "malwarebazaar", "duplicate",
+                            submitted_at="2026-11-19T10:00:05Z")
+        self.add_submission(self.new, "virustotal", "submitted",
+                            submitted_at="2026-11-20T15:00:00Z")
+
+    def set_floor(self):
+        self.con.execute("INSERT INTO insights_state(key, value, updated_at)"
+                         " VALUES('data_floor', ?, ?)", (self.FLOOR, self.FLOOR))
+        self.con.commit()
+
+    def test_without_a_floor_everything_is_listed(self):
+        self.assertEqual(db.data_floor(self.con), "")
+        self.assertEqual({i["sha256"] for i in contrib.contributions(self.con)},
+                         {self.old, self.new})
+
+    def test_the_floor_hides_earlier_uploads_from_list_sample_and_counts(self):
+        self.set_floor()
+        self.assertEqual([i["sha256"] for i in contrib.contributions(self.con)], [self.new])
+        self.assertIsNone(contrib.for_sample(self.con, self.old))
+        s = contrib.summary(self.con)
+        self.assertEqual(s["contributed_samples"], 1)
+        self.assertEqual(s["by_service"]["virustotal"]["submitted"], 1)
+        self.assertEqual(s["by_service"]["malwarebazaar"]["duplicate"], 0)
+        stored = self.con.execute("SELECT COUNT(*) FROM payload_submissions").fetchone()[0]
+        self.assertEqual(stored, 3)

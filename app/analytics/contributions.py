@@ -11,6 +11,10 @@ For each contribution this module joins:
   VirusTotal view  from vt_snapshots, one row per lookup, oldest to newest
   attribution      our upload time against VirusTotal's first_submission_date
 
+Uploads made before the collector's data floor (set by bin/cutover.py) stay in
+payload_submissions, because the worker reads them to avoid uploading a sample
+twice, but they belong to the archived period and are not listed or counted.
+
 The attribution check is deliberately conservative. The worker only uploads
 after VirusTotal answered 404, but someone else can upload the same file in
 the gap between that lookup and our upload. When VirusTotal's first
@@ -101,11 +105,12 @@ def _submitted(con, sha=None):
     if not db.table_exists(con, "payload_submissions"):
         return {}
     sql = ("SELECT sha256, service, permalink, size_bytes, submitted_at "
-           "FROM payload_submissions WHERE status = 'submitted'")
-    params = ()
+           "FROM payload_submissions WHERE status = 'submitted' "
+           "AND COALESCE(submitted_at, '') >= ?")
+    params = (db.data_floor(con),)
     if sha:
         sql += " AND sha256 = ?"
-        params = (sha,)
+        params += (sha,)
     out = {}
     for r in db.qall(con, sql, params):
         out.setdefault(r["sha256"], {})[r["service"]] = r
@@ -241,7 +246,8 @@ def summary(con, days=None):
         for r in db.qall(
             con,
             "SELECT service, status, COUNT(*) AS n FROM payload_submissions "
-            "GROUP BY service, status",
+            "WHERE COALESCE(submitted_at, '') >= ? GROUP BY service, status",
+            (db.data_floor(con),),
         ):
             by_service.setdefault(r["service"], {})[r["status"]] = r["n"]
 
