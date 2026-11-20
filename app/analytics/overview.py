@@ -74,8 +74,8 @@ def headline(con, days=30):
             # the worker records every known hash, counting it here would
             # report the whole capture set as contributed.
             "WHERE status = 'submitted' "
-            "AND substr(submitted_at,1,10) >= ?",
-            (cut_day,),
+            "AND substr(submitted_at,1,10) >= ? AND submitted_at >= ?",
+            (cut_day, db.data_floor(con)),
         ) or {}).get("n", 0)
 
     return {

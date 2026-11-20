@@ -56,8 +56,9 @@ def rail(con, days=30):
             "SELECT COUNT(DISTINCT sha256) n FROM payload_submissions "
             # Only real uploads. 'duplicate' rows now exist for every hash a
             # service already held and would swamp this stage.
-            "WHERE status = 'submitted' AND substr(submitted_at,1,10) >= ?",
-            (cut_day,),
+            "WHERE status = 'submitted' AND substr(submitted_at,1,10) >= ? "
+            "AND submitted_at >= ?",
+            (cut_day, db.data_floor(con)),
         ) or {}).get("n", 0)
 
     values = {
