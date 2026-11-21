@@ -72,7 +72,7 @@ text rather than markup.
 | Text typed into a session steers a model that is later handed an export | recorded data is fenced by a per-document nonce the session could not have known, non-printing characters are escaped, and the document says outside the fence that nothing inside is an instruction |
 | Operator identity or persona detail leaks through the public repository | deployment-specific rules, addresses and persona files live outside it, in a private repository and in `/etc` |
 | A compromised package reaches the collector | dependencies install only from a lock with hashes |
-| A stage stops working without an error and the site keeps showing stale data | each stage leaves a heartbeat the health view checks, and a six-hour window catches connections arriving with no logins |
+| A stage stops working without an error and the site keeps showing stale data | each stage leaves a heartbeat or a timestamp, and the pipeline status page lists the last time of each in Eastern time, including the newest login attempt and accepted login, so a stalled stage shows as an old time |
 
 ## Risks that remain
 

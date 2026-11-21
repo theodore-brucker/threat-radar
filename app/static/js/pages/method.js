@@ -4,9 +4,7 @@
    The prose here is a factual claim about the system and is worth re-reading
    against the deployment whenever either changes. See the upgrade note. */
 
-import { api, h, panel, shortDate } from "../core.js";
-
-const when = (v) => (v ? `${shortDate(v)} UTC` : "Not yet");
+import { api, h, panel, routeLink } from "../core.js";
 
 export const TITLE = "Method";
 
@@ -15,7 +13,6 @@ const P = (t) => h("p", { text: t });
 export async function render() {
   const meta = await api("/api/v1/meta");
   const cov = meta.coverage || {};
-  const w = meta.worker || {};
 
   return h("div", {}, [
     h("div", { class: "pagehead" }, [
@@ -78,14 +75,16 @@ export async function render() {
         + "should not be trended against each other."),
     ]),
 
-    panel("How fresh this is", "When each part of the pipeline last ran.", [
+    panel("How fresh this is", null, [
       h("dl", { class: "facts" }, [
-        ["Data covers", cov.first_day && cov.last_day ? `${cov.first_day} to ${cov.last_day}` : "No data yet"],
-        ["Analysis last ran", when(w.last_run)],
-        ["Daily facts rebuilt", when(w.facts_built_at)],
-        ["Reputation lookups", when(w.intel_built_at)],
-        ["Upstream submissions", when(w.submissions_built_at)],
-      ].flatMap(([k, v]) => [h("dt", { text: k }), h("dd", { text: v })])),
+        h("dt", { text: "Data covers" }),
+        h("dd", { text: cov.first_day && cov.last_day ? `${cov.first_day} to ${cov.last_day} (UTC days)` : "No data yet" }),
+      ]),
+      h("p", {}, [
+        h("span", { text: "When each stage last ran, in Eastern time, is on the " }),
+        routeLink("/status", "pipeline status page", "plain"),
+        h("span", { text: "." }),
+      ]),
     ]),
   ]);
 }

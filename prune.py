@@ -251,6 +251,15 @@ def main() -> int:
     else:
         log(f"nothing to prune (db {before:.1f}MB, cap {MAX_DB_MB}MB, "
             f"retain {RETAIN_DAYS}d)")
+    # The status page reads this as the time the prune last finished.
+    finished = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn.execute(
+        "INSERT INTO insights_state(key, value, updated_at) VALUES(?,?,?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value, "
+        "updated_at=excluded.updated_at",
+        ("prune_at", finished, finished),
+    )
+    conn.commit()
     conn.close()
     return 0
 

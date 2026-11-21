@@ -5,7 +5,7 @@
  * server allows by hash.
  */
 
-import { wireShell, render, url, h, icon } from "./core.js";
+import { wireShell, render, url } from "./core.js";
 import { mountOmnibar } from "./omnibar.js";
 import { mountHovercards } from "./hovercard.js";
 import { mountTheme } from "./theme.js";
@@ -18,29 +18,17 @@ mountHovercards();
 mountKeys();
 render();
 
-/* Sensor health. A dot in the rail is not enough when every figure on the
-   page is stale, so a degraded sensor also raises a bar across the top. */
+/* The rail footer states when the newest event arrived, in Eastern time. The
+   status page has the same for every other stage. */
 fetch(url("/api/v1/health"))
   .then((r) => r.json())
   .then((b) => {
     const d = b.data || b;
-    const dot = document.getElementById("health-dot");
-    const txt = document.getElementById("health-text");
-    dot.className = `dot ${d.status === "fault" ? "fault" : d.status === "warn" ? "stale" : "live"}`;
-    txt.textContent = d.status === "fault" ? "Sensor fault"
-      : d.status === "warn" ? "Data is behind" : "Sensor reporting";
-    document.getElementById("coverage").textContent =
-      d.last_event_day ? `Data through ${d.last_event_day}` : "";
-
-    const bar = document.getElementById("stalebar");
-    if (d.status === "ok") { bar.hidden = true; return; }
-    bar.className = `stalebar ${d.status}`;
-    bar.replaceChildren(h("span", {
-      text: d.message || "The sensor is not reporting normally, so recent figures may be incomplete.",
-    }));
-    bar.hidden = false;
+    const newest = (d.items || []).find((i) => i.key === "events");
+    document.getElementById("last-event").textContent =
+      `Newest event: ${(newest && newest.at_local) || "none recorded"}`;
   })
   .catch(() => {
-    const txt = document.getElementById("health-text");
-    if (txt) txt.textContent = "Sensor status unavailable";
+    const el = document.getElementById("last-event");
+    if (el) el.textContent = "Pipeline status unavailable";
   });

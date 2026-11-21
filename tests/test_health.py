@@ -1,9 +1,8 @@
-"""The health view has to notice each way the pipeline can fail without an error.
+"""The status view reports when each stage last ran, in Eastern time.
 
-Two of these have happened on this deployment: authentication died for
-seventeen days while connections kept arriving, and the sample fetch failed
-on every run for a day under a unit that tolerates its failure. The view used
-to work at day granularity and had no idea the individual stages existed.
+It makes no judgement about the times, so these tests check that each row
+reads the right record, that a stage with no record says so, and that the
+clock conversion follows daylight saving.
 """
 
 import datetime as dt
@@ -11,81 +10,127 @@ import os
 import tempfile
 from unittest import mock
 
-from tests.support import DBTestCase, iso
-from app.analytics import db, exec_view
+from tests.support import DBTestCase
+from tests.test_retention import load_prune
+from app.analytics import db, health
+
+UTC = dt.timezone.utc
 
 
-def minutes_ago(n):
-    t = dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=n)
-    return t.strftime("%Y-%m-%dT%H:%M:%SZ")
+def at(*parts):
+    return dt.datetime(*parts, tzinfo=UTC)
 
 
-class HealthTests(DBTestCase):
+def stamp(when):
+    return when.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+class EasternTimeTests(DBTestCase):
+    def test_winter_is_est(self):
+        self.assertEqual(health.eastern(at(2026, 11, 21, 2, 12)), "2026-11-20 9:12 PM EST")
+
+    def test_summer_is_edt(self):
+        self.assertEqual(health.eastern(at(2026, 7, 4, 16, 5)), "2026-07-04 12:05 PM EDT")
+
+    def test_midnight_is_twelve_am(self):
+        self.assertEqual(health.eastern(at(2026, 11, 20, 5, 0)), "2026-11-20 12:00 AM EST")
+
+    def test_no_time_is_none(self):
+        self.assertIsNone(health.eastern(None))
+
+
+class StatusTests(DBTestCase):
     def setUp(self):
         super().setUp()
         self.hb = tempfile.mkdtemp(prefix="tr-hb-")
         self.pull_hb = os.path.join(self.hb, ".pulled")
         self.fetch_hb = os.path.join(self.hb, ".fetched")
         for name, path in (("PULL_HEARTBEAT", self.pull_hb), ("FETCH_HEARTBEAT", self.fetch_hb)):
-            p = mock.patch.object(exec_view, name, path)
+            p = mock.patch.object(health, name, path)
             p.start()
             self.addCleanup(p.stop)
 
-    def beat(self, path, minutes):
+    def beat(self, path, when):
         open(path, "w").close()
-        t = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=minutes)).timestamp()
-        os.utime(path, (t, t))
+        os.utime(path, (when.timestamp(), when.timestamp()))
 
-    def healthy_pipeline(self):
-        # A day of normal session facts, so the day-level checks pass, and
-        # every stage recently completed.
-        self.con.execute(
-            "INSERT INTO session_facts(day, session, src_ip, authed, commands)"
-            " VALUES(?, 's0', '198.51.100.1', 1, 1)", (iso()[:10],))
-        self.con.execute("INSERT INTO asn_ip_daily(day, asn, src_ip, events) VALUES(?, 1, '198.51.100.1', 1)",
-                         (iso()[:10],))
+    def rows(self, **kw):
+        return {i["key"]: i for i in health.status(self.con, **kw)["items"]}
+
+    def test_an_empty_install_has_a_row_per_stage_and_no_times(self):
+        rows = self.rows()
+        self.assertEqual(
+            set(rows),
+            {"pull", "events", "login_attempt", "login_success", "enrich", "samples",
+             "worker", "facts", "intel", "submissions", "trends", "prune"})
+        for r in rows.values():
+            self.assertIsNone(r["at"], r["key"])
+            self.assertIsNone(r["at_local"], r["key"])
+
+    def test_there_is_no_verdict(self):
+        out = health.status(self.con)
+        self.assertNotIn("status", out)
+        self.assertNotIn("message", out)
+        self.assertEqual(out["timezone"], "Eastern time")
+
+    def test_heartbeats_fill_pull_and_samples(self):
+        self.beat(self.pull_hb, at(2026, 11, 21, 2, 10))
+        self.beat(self.fetch_hb, at(2026, 11, 21, 1, 30))
+        rows = self.rows()
+        self.assertEqual(rows["pull"]["at_local"], "2026-11-20 9:10 PM EST")
+        self.assertEqual(rows["samples"]["at_local"], "2026-11-20 8:30 PM EST")
+
+    def test_events_and_logins_come_from_raw_events(self):
+        self.add_event("cowrie.session.connect", "a", "198.51.100.1", "2026-11-21T02:12:30Z")
+        self.add_event("cowrie.login.success", "a", "198.51.100.1", "2026-11-21T01:00:00Z")
+        self.add_event("cowrie.login.failed", "b", "198.51.100.2", "2026-11-21T02:05:00Z")
+        rows = self.rows()
+        self.assertEqual(rows["events"]["at"], "2026-11-21T02:12:30Z")
+        self.assertEqual(rows["login_attempt"]["at"], "2026-11-21T02:05:00Z")
+        self.assertEqual(rows["login_success"]["at"], "2026-11-21T01:00:00Z")
+
+    def test_cowrie_microsecond_timestamps_parse(self):
+        self.add_event("cowrie.session.connect", "a", "198.51.100.1", "2026-11-21T02:12:30.123456Z")
+        self.assertEqual(self.rows()["events"]["at_local"], "2026-11-20 9:12 PM EST")
+
+    def test_worker_and_prune_come_from_state(self):
+        db.set_state(self.con, "last_run", "2026-11-21T02:00:00Z")
+        db.set_state(self.con, "facts_built_at", "2026-11-21T01:59:00Z")
+        db.set_state(self.con, "prune_at", "2026-11-21T01:00:00Z")
         self.con.commit()
-        db.set_state(self.con, "last_run", minutes_ago(5))
+        rows = self.rows()
+        self.assertEqual(rows["worker"]["at"], "2026-11-21T02:00:00Z")
+        self.assertEqual(rows["facts"]["at"], "2026-11-21T01:59:00Z")
+        self.assertEqual(rows["prune"]["at"], "2026-11-21T01:00:00Z")
+
+    def test_enrich_reads_the_newest_lookup(self):
+        self.con.execute("INSERT INTO sources(ip, enriched_at) VALUES('198.51.100.1', '2026-11-21T00:00:00Z')")
+        self.con.execute("INSERT INTO sources(ip, enriched_at) VALUES('198.51.100.2', '2026-11-21T02:00:00Z')")
+        self.con.execute("INSERT INTO sources(ip) VALUES('198.51.100.3')")
         self.con.commit()
-        self.beat(self.pull_hb, 1)
-        self.beat(self.fetch_hb, 10)
-        self.add_event("cowrie.session.connect", "a", "198.51.100.1", minutes_ago(2))
-        self.add_event("cowrie.login.failed", "a", "198.51.100.1", minutes_ago(2))
+        self.assertEqual(self.rows()["enrich"]["at"], "2026-11-21T02:00:00Z")
 
-    def test_everything_recent_is_ok(self):
-        self.healthy_pipeline()
-        h = exec_view.health(self.con)
-        self.assertEqual(h["status"], "ok", h["message"])
-        self.assertEqual(h["stages"]["pull"]["minutes_ago"], 1)
+    def test_checked_at_uses_the_clock_given(self):
+        out = health.status(self.con, now=at(2026, 11, 21, 2, 15))
+        self.assertEqual(out["checked_at"], stamp(at(2026, 11, 21, 2, 15)))
+        self.assertEqual(out["checked_at_local"], "2026-11-20 9:15 PM EST")
 
-    def test_connections_without_logins_is_the_july_fault(self):
-        self.healthy_pipeline()
-        for i in range(40):
-            self.add_event("cowrie.session.connect", f"c{i}", "198.51.100.2", minutes_ago(30 + i))
-        self.con.execute("DELETE FROM raw_events WHERE eventid LIKE 'cowrie.login.%'")
+    def test_storage_note_passes_through(self):
+        db.set_state(self.con, "storage_status", "The database is 5000 MB against a 4096 MB cap.")
         self.con.commit()
-        h = exec_view.health(self.con)
-        self.assertEqual(h["status"], "fault")
-        self.assertIn("not one login event", h["message"])
+        self.assertIn("cap", health.status(self.con)["storage"])
 
-    def test_a_stalled_pull_is_reported(self):
-        self.healthy_pipeline()
-        self.beat(self.pull_hb, 40)
-        h = exec_view.health(self.con)
-        self.assertEqual(h["status"], "warn")
-        self.assertIn("log pull", h["message"])
+    def test_prune_records_when_it_finished(self):
+        prune = load_prune(self.db_path)
+        with mock.patch.object(prune, "MAX_DB_MB", 10 ** 9), \
+             mock.patch.object(prune.shutil, "disk_usage",
+                               return_value=mock.Mock(free=10 ** 13)):
+            prune.main()
+        self.assertIsNotNone(self.rows()["prune"]["at"])
 
-    def test_a_failing_sample_fetch_is_reported(self):
-        # The failure that went unnoticed for a day.
-        self.healthy_pipeline()
-        self.beat(self.fetch_hb, 60 * 5)
-        h = exec_view.health(self.con)
-        self.assertEqual(h["status"], "warn")
-        self.assertIn("sample fetch", h["message"])
-
-    def test_a_missing_heartbeat_is_unknown_not_stale(self):
-        self.healthy_pipeline()
-        os.remove(self.fetch_hb)
-        h = exec_view.health(self.con)
-        self.assertEqual(h["status"], "ok")
-        self.assertIsNone(h["stages"]["samples"]["at"])
+    def test_the_api_serves_it(self):
+        from fastapi.testclient import TestClient
+        from app.main import app
+        r = TestClient(app).get("/api/v1/health")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("items", r.json()["data"])

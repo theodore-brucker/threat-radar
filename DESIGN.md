@@ -126,7 +126,7 @@ refer to tokens only; a literal colour or radius there is a bug.
 +---------+--------------------------------------------------+
 ```
 
-- Left aligned throughout. Nothing is centred except the stale-data bar.
+- Left aligned throughout. Nothing is centred.
 - **Sections are not cards.** A section is a heading, a description and its
   content on the canvas, separated from the next by space. Only data surfaces
   get a border and the surface colour, so a box always means "data".
@@ -147,6 +147,11 @@ refer to tokens only; a literal colour or radius there is a bug.
 | `pageState()` | 404, unknown entities | Full-page version of the same shape. |
 | `icon(name)` | `icons.js` | Lucide path data. Add a glyph to the table rather than drawing one inline. |
 | `place(org, country)` | anywhere | Joins with a comma. No dot leaders. |
+
+Pipeline health is shown as times. The rail footer shows the
+newest event and links to `/status`, which lists when each stage last ran in
+Eastern time. Neither grades the times, so neither uses the alert or warn
+colours.
 
 ## Copy
 

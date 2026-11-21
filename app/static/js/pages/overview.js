@@ -9,7 +9,7 @@
 
 import {
   api, h, num, panel, stats, table, shortDate, dur, state, isExec,
-  stageTag, ipLink, trendLine, takeaway, hbars, svg, emptyState, icon, place,
+  stageTag, ipLink, trendLine, takeaway, hbars, svg, emptyState, place,
   routeLink, pageState,
 } from "../core.js";
 import { railFull, funnelExec, onStageChange } from "../rail.js";
@@ -46,26 +46,6 @@ function personaNote(t) {
   return h("p", { class: "persona-note" }, [
     h("b", { text: "These changes are not like for like. " }),
     h("span", { text: n.reason }),
-  ]);
-}
-
-/* A banner only for a fault. The rail footer already shows a healthy status,
-   and a lagging pull raises the bar across the top of every page. */
-function healthBanner(hl) {
-  // A lagging pull already raises the bar across the top of every page, so
-  // the overview only adds a banner for a fault, where it has more to say.
-  if (!hl || hl.status !== "fault") return null;
-  const fault = hl.status === "fault";
-  return h("div", { class: `banner ${fault ? "fault" : "warn"}`, role: "status" }, [
-    icon(fault ? "octagon-alert" : "triangle-alert", { size: 18 }),
-    h("div", {}, [
-      h("b", { text: fault ? "The sensor is not recording logins." : "Recent data may be behind." }),
-      h("p", { text: hl.message }),
-      fault
-        ? h("p", { text: `The last successful login was recorded on ${hl.last_auth_day || "no date on file"}. `
-            + "Every stage after the first is frozen until the sensor is fixed." })
-        : null,
-    ]),
   ]);
 }
 
@@ -117,7 +97,6 @@ async function execView(d) {
   revealed = true;
 
   return h("div", {}, [
-    healthBanner(d.health),
     pagehead(head),
 
     panel("How far intruders get",
@@ -212,7 +191,6 @@ async function analystView(d) {
   onStageChange((s) => applyFilter(mapSvg, s));
 
   return h("div", {}, [
-    healthBanner(d.health),
     pagehead(head),
     stats([
       { label: "Events", value: num(head.events_total) },

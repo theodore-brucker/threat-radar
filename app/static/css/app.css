@@ -107,16 +107,11 @@ h1, h2, h3 {
   font-size: var(--fs-12); color: var(--ink-dim); line-height: var(--lh-body);
   display: flex; flex-direction: column; gap: var(--s1);
 }
-.nav .foot .status { display: flex; align-items: center; gap: var(--s2); color: var(--ink-soft); }
+.nav .foot .status { color: var(--ink-soft); }
 .nav .foot a { color: var(--ink-dim); }
 .nav .foot a:hover { color: var(--accent); }
 .nav .foot button.quiet { align-self: flex-start; padding-left: 0; padding-right: 0; }
 
-.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
-.dot.live { background: var(--ok); }
-.dot.stale { background: var(--warn); }
-.dot.fault { background: var(--alert); }
-.dot.unknown { background: var(--line-strong); }
 
 /* ---------- top bar ---------- */
 
