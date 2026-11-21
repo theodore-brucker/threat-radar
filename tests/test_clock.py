@@ -70,7 +70,6 @@ class NowTests(unittest.TestCase):
             self.assertEqual(clock.today(), "2026-11-20")
             self.assertEqual(clock.days_ago(1), "2026-11-19")
             self.assertEqual(db.TsExpr.cutoff_day(1), "2026-11-19")
-            self.assertEqual(db.TsExpr.cutoff_bound(1), "2026-11-19T05:00:00")
 
 
 class DisplayTests(unittest.TestCase):

@@ -88,11 +88,6 @@ class TsExpr:
         """The first Eastern day of a `days`-day window, for per-day tables."""
         return clock.days_ago(days)
 
-    @staticmethod
-    def cutoff_bound(days: int) -> str:
-        """Start of cutoff_day() in UTC, for stored *_seen and *_at times."""
-        return clock.bounds(clock.days_ago(days))[0]
-
     def day_range(self, day: str, span_days: int = 1):
         """Half-open [lo, hi) bounds on raw_events.ts for Eastern days."""
         if self.epoch:
