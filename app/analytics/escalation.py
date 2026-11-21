@@ -28,7 +28,7 @@ def rail(con, days=30):
     """
     days = db.clamp_days(days, default=30)
     ts = db.TsExpr(con)
-    cut_day = str(ts.cutoff(days))[:10]
+    cut_day = ts.cutoff_day(days)
 
     row = db.qone(
         con,
@@ -56,7 +56,7 @@ def rail(con, days=30):
             "SELECT COUNT(DISTINCT sha256) n FROM payload_submissions "
             # Only real uploads. 'duplicate' rows now exist for every hash a
             # service already held and would swamp this stage.
-            "WHERE status = 'submitted' AND substr(submitted_at,1,10) >= ? "
+            "WHERE status = 'submitted' AND et_day(submitted_at) >= ? "
             "AND submitted_at >= ?",
             (cut_day, db.data_floor(con)),
         ) or {}).get("n", 0)
@@ -96,7 +96,7 @@ def map_points(con, days=30, limit=60, min_stage=0):
     if not db.table_exists(con, "source_stage_daily"):
         return []
     ts = db.TsExpr(con)
-    cut_day = str(ts.cutoff(days))[:10]
+    cut_day = ts.cutoff_day(days)
     return db.qall(
         con,
         """
@@ -126,7 +126,7 @@ def stage_totals(con, days=30):
     if not db.table_exists(con, "source_stage_daily"):
         return []
     ts = db.TsExpr(con)
-    cut_day = str(ts.cutoff(days))[:10]
+    cut_day = ts.cutoff_day(days)
     return db.qall(
         con,
         """
@@ -144,7 +144,7 @@ def sources(con, days=30, min_stage=0, limit=100, offset=0):
     if not db.table_exists(con, "source_stage_daily"):
         return []
     ts = db.TsExpr(con)
-    cut_day = str(ts.cutoff(days))[:10]
+    cut_day = ts.cutoff_day(days)
     return db.qall(
         con,
         """

@@ -24,6 +24,7 @@ preceded rather than claimed.
 
 import datetime as dt
 
+from . import clock
 from . import db
 
 # VirusTotal stamps first_submission_date when it receives the file; we stamp
@@ -261,9 +262,8 @@ def summary(con, days=None):
     }
     if days is not None:
         days = db.clamp_days(days, default=30)
-        cut = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).strftime(
-            "%Y-%m-%d")
+        cut = clock.days_ago(days)
         out["window_days"] = days
         out["contributed_window"] = sum(
-            1 for i in items if (i["first_contributed"] or "")[:10] >= cut)
+            1 for i in items if (clock.day(i["first_contributed"]) or "") >= cut)
     return out

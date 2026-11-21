@@ -82,7 +82,7 @@ export async function render() {
       ])),
     ], { scoped: false }),
 
-    panel("Timeline", `${num(tl.length)} events, starting ${shortDate(m.started)} UTC.`, [
+    panel("Timeline", `${num(tl.length)} events, starting ${shortDate(m.started)} Eastern time.`, [
       tl.length
         ? h("ol", { class: "tl" }, tl.map((e) =>
             h("li", { class: KEY_EVENTS.has(e.eventid) ? "tl-item key" : "tl-item" }, [

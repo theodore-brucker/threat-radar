@@ -52,8 +52,7 @@ def overview(con, days=30, limit=50):
     if not db.table_exists(con, "tunnel_targets"):
         return {"built": False}
     ts = db.TsExpr(con)
-    cut_day = ts.cutoff(days)
-    cut_day = (cut_day if isinstance(cut_day, str) else "")[:10] or "0000-00-00"
+    cut_day = ts.cutoff_day(days)
 
     totals = db.qone(
         con,

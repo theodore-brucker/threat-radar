@@ -25,7 +25,7 @@ import sys
 APP_DIR = os.environ.get("TR_APP", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, APP_DIR)
 
-from app.analytics import db  # noqa: E402
+from app.analytics import clock, db  # noqa: E402
 from app.trends import MIGRATION, collectors, classify, fetch, rollup, seed  # noqa: E402
 
 DAILY_WRITE_CAP = int(os.environ.get("TR_TRENDS_WRITE_CAP", str(50 * 1024 * 1024)))
@@ -148,7 +148,7 @@ def main(argv=None):
     ap.add_argument("--rollup", action="store_true")
     args = ap.parse_args(argv)
     now = dt.datetime.now(dt.timezone.utc)
-    today = now.date().isoformat()
+    today = clock.today()
     start_bytes = written_bytes()
 
     if args.dry_run:

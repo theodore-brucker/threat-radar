@@ -182,7 +182,7 @@ def overview(con, days=30, limit=20):
     if not db.table_exists(con, "payload_families"):
         return {"built": False, "families": []}
     ts = db.TsExpr(con)
-    cut = str(ts.cutoff(db.clamp_days(days, default=30)))[:10]
+    cut = ts.cutoff_day(db.clamp_days(days, default=30))
     rows = db.qall(
         con,
         """
@@ -193,7 +193,7 @@ def overview(con, days=30, limit=20):
                MAX(p.last_seen)         AS last_seen
         FROM payload_families f
         JOIN payloads p ON p.shasum = f.shasum
-        WHERE substr(p.last_seen,1,10) >= ?
+        WHERE et_day(p.last_seen) >= ?
         GROUP BY f.family
         ORDER BY samples DESC, transfers DESC
         LIMIT ?
@@ -206,7 +206,7 @@ def overview(con, days=30, limit=20):
         SELECT COUNT(DISTINCT p.shasum) n FROM payloads p
         LEFT JOIN payload_families f ON f.shasum = p.shasum
         WHERE p.shasum <> '' AND f.shasum IS NULL
-          AND substr(p.last_seen,1,10) >= ?
+          AND et_day(p.last_seen) >= ?
         """,
         (cut,),
     ) or {}

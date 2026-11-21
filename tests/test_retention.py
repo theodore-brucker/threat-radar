@@ -18,7 +18,7 @@ import unittest
 from unittest import mock
 
 from tests.support import DBTestCase, ROOT, iso, sha, worker
-from app.analytics import db
+from app.analytics import clock, db
 
 DOWNLOAD = worker.DOWNLOAD_EVENT
 
@@ -72,7 +72,7 @@ class PayloadRetentionTests(DBTestCase):
 
     def test_per_day_rows_outside_the_window_are_kept(self):
         worker.build_payloads(self.con, backfill_all=True)
-        old_day = iso(days_ago=40)[:10]
+        old_day = clock.day(iso(days_ago=40))
         count = "SELECT COUNT(*) FROM payload_daily WHERE day = ?"
         self.assertEqual(self.con.execute(count, (old_day,)).fetchone()[0], 2)
 
@@ -134,7 +134,7 @@ class CredentialRetentionTests(DBTestCase):
         after = self.pair("root", "123456")
         self.assertEqual((after["attempts"], after["successes"]), (3, 1))
         self.assertEqual(after["distinct_ips"], 3)
-        self.assertEqual(after["first_seen"], iso(days_ago=40)[:10])
+        self.assertEqual(after["first_seen"], clock.day(iso(days_ago=40)))
 
     def test_tags_follow_the_lifetime_pairs(self):
         self.build(backfill_all=True)
@@ -158,10 +158,10 @@ class DaySelectionTests(DBTestCase):
                        username="a", password="b")
         ts = db.TsExpr(self.con)
         worker.build_credentials(self.con, backfill_all=True)
-        oldest = iso(days_ago=5)[:10]
+        oldest = clock.day(iso(days_ago=5))
         days = worker.days_to_build(self.con, ts, "cred_pair_daily", backfill_all=True)
         self.assertNotIn(oldest, days)
-        self.assertIn(iso(days_ago=1)[:10], days)
+        self.assertIn(clock.day(iso(days_ago=1)), days)
 
 
 def load_prune(db_path):

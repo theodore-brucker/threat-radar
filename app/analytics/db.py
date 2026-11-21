@@ -8,6 +8,8 @@ import datetime as dt
 import os
 import sqlite3
 
+from . import clock
+
 DB_PATH = os.environ.get("TR_DB", "/opt/threat-radar/data/radar.db")
 
 
@@ -15,6 +17,7 @@ def connect_ro(path: str = None) -> sqlite3.Connection:
     p = path or DB_PATH
     con = sqlite3.connect(f"file:{p}?mode=ro", uri=True, timeout=15)
     con.row_factory = sqlite3.Row
+    clock.register(con)
     con.execute("PRAGMA busy_timeout=15000")
     # A second guard behind mode=ro: SQLite refuses any statement that would
     # change the database, whatever the file permissions happen to allow.
@@ -26,6 +29,7 @@ def connect_rw(path: str = None) -> sqlite3.Connection:
     p = path or DB_PATH
     con = sqlite3.connect(p, timeout=120)
     con.row_factory = sqlite3.Row
+    clock.register(con)
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA busy_timeout=120000")
     con.execute("PRAGMA synchronous=NORMAL")
@@ -51,7 +55,11 @@ def table_exists(con, name) -> bool:
 class TsExpr:
     """raw_events.ts is written by the ingest as ISO text, but older rows on
     some sensors landed as epoch floats. Sample one row and pick the matching
-    SQL expressions instead of assuming."""
+    SQL expressions instead of assuming.
+
+    Days are Eastern days (see clock.py). day_of() needs et_day(), which
+    connect_ro and connect_rw register.
+    """
 
     def __init__(self, con):
         row = con.execute(
@@ -60,40 +68,31 @@ class TsExpr:
         sample = row[0] if row else ""
         self.epoch = isinstance(sample, (int, float))
         if self.epoch:
-            self.hour = "strftime('%Y-%m-%dT%H', ts, 'unixepoch')"
             self.iso = "strftime('%Y-%m-%dT%H:%M:%SZ', ts, 'unixepoch')"
         else:
-            self.hour = "substr(ts,1,13)"
             self.iso = "ts"
         self.day = self.day_of("ts")
 
     def day_of(self, expr: str = "ts") -> str:
-        if self.epoch:
-            return f"strftime('%Y-%m-%d', {expr}, 'unixepoch')"
-        return f"substr({expr},1,10)"
+        return f"et_day({expr})"
 
     def cutoff(self, days: int):
-        t = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=int(days))
+        """The moment `days` days ago, in the form raw_events.ts uses."""
+        t = clock.now() - dt.timedelta(days=int(days))
         if self.epoch:
             return t.timestamp()
         return t.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    def day_range(self, day: str, span_days: int = 1):
-        """Half-open [lo, hi) bounds for a YYYY-MM-DD day.
+    @staticmethod
+    def cutoff_day(days: int) -> str:
+        """The first Eastern day of a `days`-day window, for per-day tables."""
+        return clock.days_ago(days)
 
-        The ISO form compares against the bare date string:
-        '2026-08-04T00:00:00.123Z' sorts before '2026-08-04T00:00:00Z' because
-        '.' is below 'Z' in ASCII, so a full timestamp bound would silently
-        drop events in the first fraction of a second of the day.
-        """
-        start = dt.date.fromisoformat(day)
-        end = start + dt.timedelta(days=int(span_days))
+    def day_range(self, day: str, span_days: int = 1):
+        """Half-open [lo, hi) bounds on raw_events.ts for Eastern days."""
         if self.epoch:
-            to_ts = lambda d: dt.datetime(
-                d.year, d.month, d.day, tzinfo=dt.timezone.utc
-            ).timestamp()
-            return to_ts(start), to_ts(end)
-        return start.isoformat(), end.isoformat()
+            return clock.epoch_bounds(day, span_days)
+        return clock.bounds(day, span_days)
 
 
 def source_columns(con) -> dict:

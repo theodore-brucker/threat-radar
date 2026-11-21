@@ -12,6 +12,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse, PlainTextResponse
 
+from app.analytics import clock
 from app.analytics import db
 from app.trends import export as texport
 from app.trends import read
@@ -29,7 +30,7 @@ def _con():
 
 
 def ok(data):
-    return {"ok": True, "generated_at": db.utcnow(), "data": data}
+    return {"ok": True, "generated_at": clock.iso(clock.now()), "data": clock.localize(data)}
 
 
 @router.get("/api/v1/trends/summary")

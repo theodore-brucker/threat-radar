@@ -143,7 +143,7 @@ def campaigns(con, days=30, limit=40):
         return {"built": False, "campaigns": [], "note": "run the worker to build cred_pair_daily"}
 
     ts = db.TsExpr(con)
-    cut_day = str(ts.cutoff(days))[:10]
+    cut_day = ts.cutoff_day(days)
 
     rows = db.qall(
         con,
@@ -204,7 +204,7 @@ def top_pairs(con, days=30, limit=25):
     if not db.table_exists(con, "cred_pair_daily"):
         return []
     ts = db.TsExpr(con)
-    cut_day = str(ts.cutoff(days))[:10]
+    cut_day = ts.cutoff_day(days)
     return db.qall(
         con,
         """
@@ -223,7 +223,7 @@ def campaign_detail(con, tag, days=30, limit=100):
     if not db.table_exists(con, "cred_pair_daily"):
         return {"built": False}
     ts = db.TsExpr(con)
-    cut_day = str(ts.cutoff(days))[:10]
+    cut_day = ts.cutoff_day(days)
     pairs = db.qall(
         con,
         """

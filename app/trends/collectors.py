@@ -12,23 +12,28 @@ import os
 import re
 import xml.etree.ElementTree as ET
 
-from app.analytics import db
+from app.analytics import clock, db
 from app.trends import TRACK_FROM, classify, item_hash, store
 
 CVE_RE = re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.I)
 
 
 def _day(value):
-    """An RSS or ISO date as YYYY-MM-DD, or None."""
+    """An RSS or ISO date as the US Eastern day YYYY-MM-DD, or None. A value
+    with a time and no zone is read as UTC."""
     if not value:
         return None
     v = value.strip()
     if re.match(r"^\d{4}-\d{2}-\d{2}", v):
-        return v[:10]
+        t = clock.local(v) if len(v) > 10 else None
+        return t.date().isoformat() if t else v[:10]
     try:
-        return email.utils.parsedate_to_datetime(v).astimezone(dt.timezone.utc).strftime("%Y-%m-%d")
+        t = email.utils.parsedate_to_datetime(v)
     except (TypeError, ValueError):
         return None
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=dt.timezone.utc)
+    return t.astimezone(clock.TZ).strftime("%Y-%m-%d")
 
 
 def parse_rss(body):

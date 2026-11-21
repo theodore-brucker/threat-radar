@@ -19,6 +19,7 @@ import json
 import httpx
 from fastapi.testclient import TestClient
 
+from app.analytics import clock
 from tests import fixtures
 from tests.support import DBTestCase, worker
 
@@ -77,7 +78,7 @@ class RouteCase(DBTestCase):
     def entity_paths(self):
         return [
             "/api/v1/entity/ip/192.0.2.10",
-            "/api/v1/entity/day/" + fixtures._ts(30)[:10],
+            "/api/v1/entity/day/" + clock.day(fixtures._ts(30)),
             "/api/v1/entity/credential/" + b64u("root\x00" + fixtures.HOSTILE[0]),
             "/api/v1/entity/hassh/" + "%032x" % 0,
             "/api/v1/entity/url/" + b64u("http://203.0.113.50/" + fixtures.HOSTILE[0][:60]),
@@ -115,6 +116,32 @@ class ContractTests(RouteCase):
                 self.assertIn("generated_at", body)
                 self.assertIn("data", body)
 
+    def test_no_route_returns_a_utc_time(self):
+        # Every stored time leaves the API as Eastern with an offset. A UTC
+        # value here means a time key clock.localize does not know, and the
+        # page would show a UTC clock reading as if it were Eastern.
+        import re
+        utc = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]00:?00)$")
+
+        def walk(obj, where):
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    yield from walk(v, f"{where}.{k}")
+            elif isinstance(obj, list):
+                for v in obj:
+                    yield from walk(v, f"{where}[]")
+            elif isinstance(obj, str) and utc.match(obj):
+                yield where
+
+        client = TestClient(self.app, raise_server_exceptions=False)
+        paths = [self.valid_path(r) for r in self.routes if "GET" in r.methods]
+        for path in [p for p in paths if p] + self.entity_paths() + self.export_paths():
+            r = client.get(path)
+            if r.status_code != 200:
+                continue  # status is test_every_get_route_answers_the_envelope's job
+            with self.subTest(path=path):
+                self.assertEqual(sorted(set(walk(r.json(), ""))), [])
+
     def test_windowed_routes_report_their_window(self):
         for r in self.routes:
             if "GET" in r.methods and any(q.name == "days" for q in r.dependant.query_params):
@@ -131,7 +158,7 @@ class ContractTests(RouteCase):
             "credential": b64u("root\x00" + fixtures.HOSTILE[0]),
             "hassh": "%032x" % 0,
             "url": b64u(url),
-            "day": fixtures._ts(30)[:10],
+            "day": clock.day(fixtures._ts(30)),
             "session": "%08x%04x" % (0, 0),
             "sample": self.shas["binary"],
         }

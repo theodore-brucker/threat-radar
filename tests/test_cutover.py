@@ -14,6 +14,7 @@ import os
 import tempfile
 from unittest import mock
 
+from app.analytics import clock
 from tests import fixtures
 from tests.support import DBTestCase, ROOT, sha, worker
 
@@ -28,12 +29,14 @@ def _load(name, path):
 cutover = _load("cutover", "bin/cutover.py")
 ingest = _load("ingest_mod", "ingest.py")
 
-TODAY = dt.datetime.now(dt.timezone.utc).date()
+TODAY = dt.date.fromisoformat(clock.today())
 OLD_IP, NEW_IP = "192.0.2.50", "198.51.100.60"
 
 
 def _stamp(day, hour):
-    return "%sT%02d:15:30.123456Z" % (day.isoformat(), hour)
+    # Twelve hours after the given UTC hour, so every stamp is mid-morning to
+    # late afternoon Eastern and falls on the same Eastern day as `day`.
+    return "%sT%02d:15:30.123456Z" % (day.isoformat(), hour + 12)
 
 
 class CutoverCase(DBTestCase):
@@ -267,8 +270,8 @@ class TimeCutTests(CutoverCase):
 
     def test_a_time_cut_keeps_only_events_after_it_and_rebuilds_that_day(self):
         day = self.build_day()
-        cut = cutover.parse_cut(day.isoformat() + "T05:00Z")
-        self.assertEqual(cut, day.isoformat() + "T05:00:00")
+        cut = cutover.parse_cut(day.isoformat() + "T17:00Z")
+        self.assertEqual(cut, day.isoformat() + "T17:00:00")
         self.assertEqual(self.count("SELECT COUNT(*) FROM asn_ip_daily WHERE day = ? AND src_ip = ?",
                                     (day.isoformat(), "192.0.2.77")), 1)
 
@@ -313,7 +316,7 @@ class TimeCutTests(CutoverCase):
         for n in (1, 2, 3):
             with open(os.path.join(self.sample_dir, sha(n)), "wb") as fh:
                 fh.write(b"x")
-        listed = cutover.old_samples(self.con, day.isoformat() + "T05:00:00", self.sample_dir)
+        listed = cutover.old_samples(self.con, day.isoformat() + "T17:00:00", self.sample_dir)
         self.assertEqual(listed, [sha(1), sha(2), sha(3)])
 
 

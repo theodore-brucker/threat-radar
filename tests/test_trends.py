@@ -17,7 +17,7 @@ import urllib.error
 from unittest import mock
 
 import tests.support  # noqa: F401  (sets the environment before app imports)
-from app.analytics import db
+from app.analytics import clock, db
 from app.trends import collectors, classify, fetch, rollup, seed
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -105,6 +105,26 @@ class FetchTests(unittest.TestCase):
         fetch.save_state(con, "s", 200, '"abc"', None, 10)
         fetch.save_state(con, "s", 304)
         self.assertEqual(con.execute("SELECT etag FROM trend_fetch_state").fetchone()[0], '"abc"')
+
+
+class FeedDateTests(unittest.TestCase):
+    """Feed dates become US Eastern days."""
+
+    def test_rfc822_late_evening_eastern_stays_on_its_day(self):
+        self.assertEqual(collectors._day("Sat, 21 Nov 2026 03:30:00 +0000"), "2026-11-20")
+        self.assertEqual(collectors._day("Fri, 20 Nov 2026 22:30:00 -0500"), "2026-11-20")
+
+    def test_rfc822_with_no_zone_is_read_as_utc(self):
+        self.assertEqual(collectors._day("Sat, 21 Nov 2026 03:30:00 -0000"), "2026-11-20")
+
+    def test_iso_values(self):
+        self.assertEqual(collectors._day("2026-11-20"), "2026-11-20")
+        self.assertEqual(collectors._day("2026-11-21T03:30:00Z"), "2026-11-20")
+        self.assertEqual(collectors._day("2026-11-21T12:00:00+00:00"), "2026-11-21")
+
+    def test_junk_is_none(self):
+        for junk in (None, "", "not a date"):
+            self.assertIsNone(collectors._day(junk))
 
 
 class KeywordTests(unittest.TestCase):
@@ -401,7 +421,7 @@ class WorkerRunTests(unittest.TestCase):
 
     def test_a_spent_write_budget_skips_collection(self):
         self.con.execute("INSERT INTO trend_write_log(day, bytes) VALUES(?, ?)",
-                         (dt.datetime.now(dt.timezone.utc).date().isoformat(), 10 ** 9))
+                         (clock.today(), 10 ** 9))
         self.con.commit()
         code, out = self.run_main()
         self.assertEqual(code, 0)

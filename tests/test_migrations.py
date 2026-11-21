@@ -66,5 +66,36 @@ class MigrationsOverDataTests(DBTestCase):
         self.assertEqual(after, counts)
 
 
+class EasternDaysMigrationTests(unittest.TestCase):
+    """018 removes UTC-keyed day rows that raw events can rebuild, once."""
+
+    def setUp(self):
+        self.con = sqlite3.connect(":memory:")
+        apply_all(self.con)
+        self.con.execute("DELETE FROM insights_state WHERE key = 'day_zone'")
+        self.con.execute(
+            "INSERT INTO raw_events(line_hash, eventid, session, src_ip, ts, payload)"
+            " VALUES('h1', 'cowrie.session.connect', 's', '198.51.100.1',"
+            " '2026-11-20T14:06:00.5Z', '{}')")
+        for day in ("2026-10-01", "2026-11-20", "2026-11-21"):
+            self.con.execute("INSERT INTO eventid_daily(day, eventid, events)"
+                             " VALUES(?, 'cowrie.session.connect', 1)", (day,))
+        self.con.commit()
+
+    def days(self):
+        return [r[0] for r in self.con.execute("SELECT day FROM eventid_daily ORDER BY day")]
+
+    def test_rows_raw_events_cover_are_removed_and_older_ones_kept(self):
+        apply_all(self.con)
+        self.assertEqual(self.days(), ["2026-10-01"])
+
+    def test_it_runs_once(self):
+        apply_all(self.con)
+        self.con.execute("INSERT INTO eventid_daily(day, eventid, events)"
+                         " VALUES('2026-11-20', 'cowrie.session.connect', 5)")
+        apply_all(self.con)
+        self.assertEqual(self.days(), ["2026-10-01", "2026-11-20"])
+
+
 if __name__ == "__main__":
     unittest.main()
