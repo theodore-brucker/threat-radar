@@ -63,6 +63,7 @@ ignore_names = ["row_factory", "hour"]
 "app/analytics/families.py" = 20
 "app/analytics/fingerprints.py" = 80
 "app/analytics/funnel.py" = 85
+"app/analytics/health.py" = 90
 "app/analytics/lookup.py" = 80
 "app/analytics/outages.py" = 85
 "app/analytics/overview.py" = 90
