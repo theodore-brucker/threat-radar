@@ -27,7 +27,7 @@ Answer with one JSON object and nothing else.
       "known": "what is publicly known in two to four sentences, or: Nothing found.",
       "names": ["malware family or campaign names the sources use"],
       "sources": [{"title": "", "url": ""}],
-      "confidence": "low | medium | high"
+      "confidence": "low | moderate | high"
     }
   ]
 }

@@ -294,6 +294,24 @@ def _new_campaign(slug, persona):
             "summary": "", "angle": "", "timeline": [], "indicators": [], "notes": ""}
 
 
+def _movement(days, day):
+    """How a campaign's day compares with the last day it was seen before.
+
+    days maps each day seen to its session count. A campaign with no earlier
+    day is new, one that skipped a day or more is returning, and the rest
+    moved up, down or held steady.
+    """
+    earlier = sorted(d for d in days if d < day)
+    if not earlier:
+        return {"new": True, "movement": "new", "sessions_before": 0, "gap_days": 0}
+    last = earlier[-1]
+    gap = (dt.date.fromisoformat(day) - dt.date.fromisoformat(last)).days
+    before, now = days[last], days[day]
+    movement = ("returning" if gap > 1 else "up" if now > before
+                else "down" if now < before else "steady")
+    return {"new": False, "movement": movement, "sessions_before": before, "gap_days": gap}
+
+
 def _technique_page(existing, tech, day, linked):
     meta, sections = parse_page(existing) if existing else ({}, {})
     name = meta.get("name") or one_line(tech.get("name"), 120) or tech["id"]
@@ -401,10 +419,10 @@ def apply(kb, tracked, index, day):
         c["indicators"] = sorted(set(c["indicators"]) | set(wanted))[:200]
         campaigns[slug] = c
         changed.add(slug)
-        active.append({"slug": slug, "title": c["title"], "status": c["status"],
-                       "new": existing is None, "sessions_today": count,
-                       "days_seen": c["days_seen"], "first_seen": c["first_seen"],
-                       "publishable": c["publishable"]})
+        active.append(dict(_movement(days, day), slug=slug, title=c["title"],
+                           status=c["status"], sessions_today=count,
+                           days_seen=c["days_seen"], first_seen=c["first_seen"],
+                           techniques=c["techniques"], publishable=c["publishable"]))
 
     for slug, c in campaigns.items():
         status = status_for(c, day)

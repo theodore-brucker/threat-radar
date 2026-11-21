@@ -330,16 +330,33 @@ class StageTests(TeamCase):
         self.assertEqual([s["title"] for s in edited["suggestions"]],
                          ["Make last return login history"],
                          "one already raised and one repeat are dropped")
+        self.assertEqual(edited["suggestions"][0]["priority"], "high")
         self.assertEqual(edited["lesson"]["technique"], "T1082")
+        self.assertIn("nproc and lspci", edited["lesson"]["detection"])
+
+    def test_findings_and_outlook_keep_their_scales(self):
+        reading = stages.read(self.bundle, self.kb, self.ask)
+        edited = stages.edit(self.bundle, reading, [], [], self.kb, self.ask)
+        self.assertEqual([f["confidence"] for f in edited["key_findings"]],
+                         ["high", "moderate", "low"],
+                         "medium is moderate, and an unknown word is low")
+        self.assertEqual([(o["likelihood"], bool(o["watch_for"])) for o in edited["outlook"]],
+                         [("likely", True), ("roughly even", False)])
+        self.assertTrue(edited["headline"].endswith("\u2026"))
+        self.assertLessEqual(len(edited["headline"]), 111)
+        self.assertNotIn("  ", edited["headline"])
+        self.assertEqual(stages._clip("short  line\n", 40), "short line")
 
     def test_a_report_needs_a_headline_and_a_lesson_needs_a_body(self):
-        with self.assertRaises(model.StageError):
-            stages.check_report({"bottom_line": "x"}, self.kb, [])
-        out = stages.check_report({"headline": "h", "lesson": {"title": "t"},
-                                   "suggestions": "nope", "watch": [1, None, "w"]},
-                                  self.kb, [])
+        for missing in ({"executive_summary": "x"}, {"headline": "h"}):
+            with self.assertRaises(model.StageError):
+                stages.check_report(missing, self.kb, [])
+        out = stages.check_report({"headline": "h", "executive_summary": "s",
+                                   "lesson": {"title": "t"}, "suggestions": "nope",
+                                   "outlook": [1, None, {"expect": 7}]}, self.kb, [])
         self.assertIsNone(out["lesson"])
-        self.assertEqual(out["watch"], ["1", "w"])
+        self.assertEqual(out["outlook"], [{"expect": "7", "likelihood": "roughly even",
+                                           "watch_for": ""}])
 
     def test_each_stage_document_has_its_own_fence(self):
         reading = stages.read(self.bundle, self.kb, self.ask)
@@ -377,8 +394,11 @@ class StageTests(TeamCase):
                  "techniques": [{"id": value}]}, self.kb, self.index)
             self.assertEqual(tracked, {"campaigns": [], "techniques": []})
             edited = stages.check_report(
-                {"headline": "h", "campaign_notes": [{"slug": value}], "lesson": value,
-                 "suggestions": [{"title": value, "body": value}], "changes": value},
+                {"headline": "h", "executive_summary": "s",
+                 "campaign_notes": [{"slug": value}], "lesson": value,
+                 "suggestions": [{"title": value, "body": value, "priority": value}],
+                 "key_findings": [{"finding": value, "confidence": value}, value],
+                 "outlook": [{"expect": value, "likelihood": value}, value]},
                 self.kb, [{"slug": "a-b-c"}])
             self.assertEqual(edited["campaign_notes"], {})
             # A number is kept as its text. Anything else leaves no suggestion.
@@ -465,8 +485,21 @@ class KnowledgeBaseTests(TeamCase):
         self.assertEqual(page.count("- %s:" % self.day), 1)
         self.assertIn("Ran again.", page)
         self.assertEqual(active[0]["days_seen"], 1)
-        self.assertFalse(active[0]["new"])
+        self.assertEqual((active[0]["new"], active[0]["movement"]), (True, "new"),
+                         "a second run of its first day still sees a new campaign")
         self.assertEqual(files["techniques/T1082.md"].count("- %s:" % self.day), 1)
+
+    def test_a_campaign_is_compared_with_the_last_day_it_was_seen(self):
+        cases = [({"2026-11-20": 4}, "new", 0, 0),
+                 ({"2026-11-19": 2, "2026-11-20": 4}, "up", 2, 1),
+                 ({"2026-11-19": 9, "2026-11-20": 4}, "down", 9, 1),
+                 ({"2026-11-19": 4, "2026-11-20": 4}, "steady", 4, 1),
+                 ({"2026-11-10": 1, "2026-11-15": 7, "2026-11-20": 4}, "returning", 7, 5)]
+        for days, movement, before, gap in cases:
+            got = kb._movement(days, "2026-11-20")
+            self.assertEqual((got["movement"], got["sessions_before"], got["gap_days"]),
+                             (movement, before, gap))
+            self.assertEqual(got["new"], movement == "new")
 
     def test_a_known_shape_is_counted_when_the_tracker_did_not_run(self):
         index = self.build()["index"]
@@ -628,7 +661,8 @@ class ReportTests(TeamCase):
 
     def test_an_editor_failure_falls_back_to_the_reading(self):
         rep, _ = self.run_day(fail=("editor", "research"))
-        self.assertIn("Password spraying", rep["bottom_line"])
+        self.assertIn("Password spraying", rep["executive_summary"])
+        self.assertEqual(rep["key_findings"], [])
         self.assertEqual(len(rep["problems"]), 2)
         self.assertEqual(rep["campaigns"][0]["slug"], "hardware-inventory-then-exit")
 
@@ -636,7 +670,8 @@ class ReportTests(TeamCase):
         with mock.patch.object(daily.stages, "track", side_effect=KeyError("boom")):
             rep, ask = self.run_day()
         self.assertTrue(any("tracker stage crashed (KeyError)" in p for p in rep["problems"]))
-        self.assertEqual(rep["headline"], "Hardware triage scripts on a quiet day")
+        self.assertTrue(rep["headline"].startswith("Hardware triage scripts on a quiet day"))
+        self.assertEqual(rep["techniques"], [], "no tracker answer, no technique table")
         outbox.check(self.state, self.day)
 
     def test_a_run_without_the_model_says_so(self):
@@ -674,9 +709,80 @@ class ReportTests(TeamCase):
     def test_a_baseline_is_quoted_only_with_enough_days_behind_it(self):
         tile = {"label": "Sessions", "value": 9, "median": 4.0, "days": 2}
         self.assertEqual(report._baseline(tile), "no baseline yet")
-        self.assertEqual(report._baseline(dict(tile, days=5)), "median 4")
+        self.assertEqual(report._baseline(dict(tile, days=5)), "+125% against a median of 4")
+        self.assertEqual(report._baseline(dict(tile, days=5, value=3)),
+                         "-25% against a median of 4")
+        self.assertEqual(report._baseline(dict(tile, days=5, value=4)), "at its median of 4")
+        self.assertEqual(report._baseline(dict(tile, days=5, median=0)), "median 0")
+        self.assertEqual(report._baseline(dict(tile, days=5, median=None)), "no baseline yet")
         self.assertEqual(report._baseline(dict(tile, days=None)), "")
         self.assertEqual(report._count(1, "session"), "1 session")
+
+    def test_a_campaign_trend_reads_as_words(self):
+        base = {"sessions_before": 1200, "gap_days": 3}
+        self.assertEqual([report._trend(dict(base, movement=m)) for m in report.MOVEMENTS],
+                         ["new", "back after 3 days", "up from 1,200", "down from 1,200",
+                          "steady"])
+
+    def test_the_report_has_every_part_in_the_same_order(self):
+        rep, _ = self.run_day()
+        self.assertEqual(rep["tlp"], "AMBER")
+        self.assertEqual(rep["campaigns"][0]["movement"], "new")
+        self.assertEqual(rep["techniques"],
+                         [{"id": "T1082", "name": "System Information Discovery",
+                           "campaigns": ["Hardware inventory then exit"]}])
+        self.assertEqual([(i["kind"], i["context"]) for i in rep["indicators"]],
+                         [("sha256", "Hardware inventory then exit")])
+        html = report.email_html(report.coerce(rep))
+        page = report.markdown(rep)
+        text = report.email_text(rep)
+        for rendered, parts in (
+                (html, ["TLP:AMBER", "Executive summary", "Key findings", "Campaigns",
+                        "Technique of the day", "How to detect it", "ATT&amp;CK techniques seen",
+                        "Indicators", "Recommended actions", "Outlook", "Background",
+                        "What the web says", "Collection notes"]),
+                (page, ["TLP:AMBER", "## Executive summary", "## The day in numbers",
+                        "## Key findings", "## Campaigns", "## Technique of the day",
+                        "How to detect it", "## ATT&CK techniques seen", "## Indicators",
+                        "## Recommended actions", "## Outlook", "## Background",
+                        "## What the web says", "## Collection notes"])):
+            spots = [rendered.index(part) for part in parts]
+            self.assertEqual(spots, sorted(spots))
+        for word in ("high confidence", "moderate confidence", "high priority", "likely", "new"):
+            self.assertIn(">%s</span>" % word, html)
+        self.assertIn("*Confidence: moderate.*", page)
+        self.assertIn("(likely). Watch for: A file fetch", page)
+        self.assertIn("(high priority, sensor)", page)
+        self.assertIn("Outlook (likely):", text)
+        self.assertIn("(high confidence)", text)
+
+    def test_the_sharing_mark_comes_from_the_environment(self):
+        with mock.patch.dict(os.environ, {"TR_TEAM_TLP": "red"}):
+            rep, _ = self.run_day()
+        self.assertEqual(rep["tlp"], "RED")
+        with mock.patch.dict(os.environ, {"TR_TEAM_TLP": "purple"}):
+            self.assertEqual(self.run_day()[0]["tlp"], "AMBER")
+
+    def test_a_flagged_file_is_an_indicator_without_a_campaign(self):
+        index = {"files": [{"shasum": "ab" * 32, "verdicts": "virustotal: malicious (32 engines)",
+                            "family": "malkey"},
+                           {"shasum": "cd" * 32, "verdicts": "not looked up yet", "family": None}]}
+        tracked = {"campaigns": [
+            {"slug": "a-b-c", "indicators": [{"kind": "ip", "value": "192.0.2.9"},
+                                             {"kind": "sha256", "value": "ab" * 32},
+                                             {"kind": "asn", "value": "AS64496"}]},
+            {"slug": "gone", "indicators": [{"kind": "host", "value": "h.example"}]}]}
+        rows = report._indicators(tracked, [{"slug": "a-b-c", "title": "A campaign"}], index)
+        self.assertEqual([(r["kind"], r["context"]) for r in rows], [
+            ("sha256", "virustotal: malicious (32 engines), family malkey; A campaign"),
+            ("ip", "A campaign")])
+
+    def test_a_source_title_with_brackets_stays_one_link(self):
+        rep, _ = self.run_day()
+        rep["research"] = [{"indicator": "192.0.2.9", "known": "Known.", "sources": [
+            {"title": "[Guest Diary] 192.0.2.9 details", "url": "https://isc.example/d/1"}]}]
+        self.assertIn("[(Guest Diary) 192[.]0[.]2[.]9 details](https://isc.example/d/1)",
+                      report.markdown(rep))
 
     def test_a_report_read_back_is_rebuilt_field_by_field(self):
         rep, _ = self.run_day()
@@ -685,8 +791,16 @@ class ReportTests(TeamCase):
                 report.coerce(bad)
         tampered = dict(
             rep, headline=["not", "text"], tiles=[{"label": "x", "value": "9", "days": True}],
-            campaigns=[{"slug": "../escape", "title": "t"}, {"slug": "ok-slug", "days_seen": "2"}],
-            suggestions=[{"id": "zz", "title": "t"}], charts=["volume", "evil"],
+            campaigns=[{"slug": "../escape", "title": "t"},
+                       {"slug": "ok-slug", "days_seen": "2", "movement": ["up"]}],
+            suggestions=[{"id": "zz", "title": "t"},
+                         {"id": "0123456789ab", "title": "t", "priority": "urgent", "area": 3}],
+            charts=["volume", "evil"], tlp="PURPLE",
+            key_findings=[{"finding": "f", "confidence": "certain"}, "x"],
+            outlook=[{"expect": "e", "likelihood": {"very": "likely"}}],
+            techniques=[{"id": "T1082\n", "name": "n"}, {"id": "T1082", "campaigns": "x"}],
+            indicators=[{"kind": "asn", "value": "AS1"}, {"kind": ["ip"]},
+                        {"kind": "ip", "value": 7}],
             research=[{"indicator": "i", "known": "k",
                        "sources": [{"url": "javascript:x"}, {"url": "https://ok.example/a"}]}],
             draft={"path": "drafts/../../x.md", "title": "t"}, lesson="no", extra="dropped")
@@ -695,7 +809,15 @@ class ReportTests(TeamCase):
         self.assertEqual(clean["tiles"][0]["value"], 0)
         self.assertEqual([c["slug"] for c in clean["campaigns"]], ["ok-slug"])
         self.assertEqual(clean["campaigns"][0]["days_seen"], 0)
-        self.assertEqual(clean["suggestions"], [])
+        self.assertEqual(clean["campaigns"][0]["movement"], "steady")
+        self.assertEqual([(s["priority"], s["area"]) for s in clean["suggestions"]],
+                         [("medium", "sensor")])
+        self.assertEqual(clean["tlp"], "AMBER")
+        self.assertEqual(clean["key_findings"], [{"finding": "f", "why": "", "confidence": "low"}])
+        self.assertEqual(clean["outlook"][0]["likelihood"], "roughly even")
+        self.assertEqual(clean["techniques"], [{"id": "T1082", "name": "", "campaigns": []}])
+        self.assertEqual(clean["indicators"], [{"kind": "ip", "value": "7", "context": ""}])
+        report.email_html(clean)
         self.assertEqual(clean["charts"], ["volume"])
         self.assertEqual(clean["research"][0]["sources"], [{"title": "", "url": "https://ok.example/a"}])
         self.assertIsNone(clean["draft"])

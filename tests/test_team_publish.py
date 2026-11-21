@@ -38,12 +38,14 @@ def load_bin(name):
 
 def sample_report(day=DAY):
     return {
-        "schema": report.SCHEMA, "day": day, "persona": "Gateway", "headline": "A quiet day",
-        "bottom_line": "Mostly spraying.", "changes": [], "background": "",
+        "schema": report.SCHEMA, "day": day, "persona": "Gateway", "tlp": "AMBER",
+        "headline": "A quiet day", "executive_summary": "Mostly spraying.",
         "tiles": [{"label": "Sessions", "value": 5, "median": None, "days": 0}],
-        "campaigns": [], "lesson": None, "watch": [], "research": [], "limits": [],
+        "key_findings": [], "campaigns": [], "background": "", "lesson": None,
+        "techniques": [], "indicators": [], "outlook": [], "research": [], "limits": [],
         "suggestions": [{"id": SUGGESTION, "title": "Make last answer, says @you",
-                         "area": "sensor", "body": "Body for @team.\n# heading", "evidence": "Seen."}],
+                         "area": "sensor", "priority": "high",
+                         "body": "Body for @team.\n# heading", "evidence": "Seen."}],
         "pipeline": {}, "problems": [], "charts": ["hours"], "draft": None,
     }
 

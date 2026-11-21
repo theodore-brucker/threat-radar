@@ -42,6 +42,38 @@ shape the knowledge base already files under a campaign is still counted for
 that campaign. The mail goes out in every case, and when the worker left
 nothing at all the publisher mails a notice saying so.
 
+## The report
+
+The report has the same parts in the same order every day. The order and the
+parts come from how established threat intelligence teams publish, so a
+reader who knows those reports can skim this one.
+
+| Part | What it holds | Where the practice comes from |
+|------|---------------|-------------------------------|
+| Executive summary | One paragraph of 60 to 90 words that stands alone | Recorded Future's Insikt Group and CISA advisories open with one. GreyNoise's weekly brief opens with a lede of about 50 words |
+| The day in numbers | Five counts, each against the median of earlier comparable days | GreyNoise's "By The Numbers", which pairs each figure with its change on the week |
+| Key findings | Three to five facts, each with its number, why it matters, and a confidence | Insikt Group's "Key Findings", and Cisco Talos's "Why do I care?" under its main story |
+| Campaigns | A table ranked by sessions, each row marked new, returning, up, down or steady | Red Canary's monthly top ten, which marks each threat's movement against the month before |
+| Technique of the day | One piece of tradecraft taught from the record, with how to detect it | Red Canary pairs each threat with detection guidance. Talos follows its story with "So now what?" |
+| ATT&CK techniques seen | Technique, name, and the campaigns that showed it | CISA advisories map observed activity to ATT&CK in tables |
+| Indicators | Defanged, with what each is tied to, file hashes first and addresses last | CISA and Talos list indicators with each report. Ordering by how costly an indicator is to change follows Lenny Zeltser's report template |
+| Recommended actions | Up to three changes with a priority, each filed as an issue | The mitigations section of a CISA advisory, and GreyNoise's recommended actions |
+| Outlook | What is expected next, with a likelihood and what would confirm it | Insikt Group's "Outlook" |
+| Collection notes | What was cut, what failed, and what the confidence words mean | The methodology and gaps section of an intelligence report |
+
+Confidence and likelihood are kept apart, as the US intelligence community's
+analytic standard has it and as Sophos and Mandiant apply it. Confidence is
+high, moderate or low, and is stated for a judgment about what was recorded.
+Likelihood appears only in the outlook, on what has not happened yet. The
+report carries a TLP mark, AMBER unless `TR_TEAM_TLP` says otherwise.
+
+The editor stage writes the headline, the executive summary, the key
+findings, the technique, the actions and the outlook, under the rules in
+`app/team/prompts/editor.md`. Code builds the numbers, the campaign ranking,
+the technique table, the indicators and the charts from the day's record and
+the tracker's checked answer, so those parts do not depend on how a model
+chose to phrase anything.
+
 ## Trust boundaries
 
 Everything typed into a session was written by an attacker, and the team's
@@ -257,6 +289,7 @@ foot.
 | `TR_TEAM_RESEARCH_MODEL` | `team.env` | `sonnet` | Model for the researcher |
 | `TR_TEAM_STAGE_TIMEOUT` | `team.env` | `900` | Seconds one stage may take |
 | `TR_EXPORT_REDACT` | `team.env` | empty | Strings withheld from the model |
+| `TR_TEAM_TLP` | `team.env` | `AMBER` | The sharing mark shown on the report |
 | `TR_TEAM_KB_REPO` | `team-pub.env` | none | `owner/name` of the knowledge base |
 | `TR_TEAM_MAIL_FROM`, `TR_TEAM_MAIL_TO` | `team-pub.env` | none | Sender and recipient |
 | `TR_TEAM_SMTP_HOST`, `TR_TEAM_SMTP_PORT`, `TR_TEAM_SMTP_USER` | `team-pub.env` | `smtp.gmail.com`, `587`, the sender | Mail server |

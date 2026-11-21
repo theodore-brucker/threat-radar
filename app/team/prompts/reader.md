@@ -51,7 +51,7 @@ Answer with one JSON object and nothing else.
       "objective": "what the operator of the tooling was after",
       "automation": "automated | hands-on | mixed | unclear",
       "techniques": ["T1082"],
-      "confidence": "low | medium | high",
+      "confidence": "low | moderate | high",
       "evidence": "the specific records behind this reading"
     }
   ],

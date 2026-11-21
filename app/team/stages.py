@@ -34,7 +34,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 WRITING_RULES = os.path.join(HERE, "..", "..", "docs", "WRITING.md")
 
 KINDS = ("sha256", "ip", "host", "family", "asn", "hassh")
-LEVELS = ("low", "medium", "high")
+LEVELS = reportmod.CONFIDENCES
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +111,21 @@ def _choice(value, options, default):
     return value if value in options else default
 
 
+def _level(value):
+    """A confidence word on the low, moderate, high scale. "medium" is the
+    same rung under its everyday name."""
+    return "moderate" if value == "medium" else _choice(value, LEVELS, "low")
+
+
+def _clip(value, limit):
+    """One line cut at a word boundary, with a mark where it was cut, so a
+    long headline does not end in the middle of a word."""
+    text = _line(value, limit * 4)
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0].rstrip(",;:. ") + "\u2026"
+
+
 def _techniques(value, limit=8):
     return [t for t in _strings(value, 20, 12) if kbmod.TECHNIQUE_RE.match(t)][:limit]
 
@@ -145,13 +160,13 @@ def check_reading(raw, index):
         seen.add(shape)
         out["clusters"].append({
             "shape": shape,
-            "label": _line(c.get("label"), 100),
+            "label": _clip(c.get("label"), 100),
             "what_it_does": _text(c.get("what_it_does"), 1500),
             "objective": _text(c.get("objective"), 400),
             "automation": _choice(c.get("automation"),
                                   ("automated", "hands-on", "mixed", "unclear"), "unclear"),
             "techniques": _techniques(c.get("techniques"), 6),
-            "confidence": _choice(c.get("confidence"), LEVELS, "low"),
+            "confidence": _level(c.get("confidence")),
             "evidence": _text(c.get("evidence"), 800),
         })
     out["clusters"] = out["clusters"][:10]
@@ -188,7 +203,7 @@ def check_findings(raw, asked):
             "known": _text(f.get("known"), 900) or "Nothing found.",
             "names": [_line(n, 60) for n in _strings(f.get("names"), 5, 60)],
             "sources": sources,
-            "confidence": _choice(f.get("confidence"), LEVELS, "low"),
+            "confidence": _level(f.get("confidence")),
         })
     return out
 
@@ -220,7 +235,7 @@ def check_tracking(raw, kb, index):
         taken.add(slug)
         out["campaigns"].append({
             "slug": slug,
-            "title": _line(c.get("title"), 100) or slug,
+            "title": _clip(c.get("title"), 100) or slug,
             "summary": summary,
             "today": _line(c.get("today"), 600),
             "shapes": shapes,
@@ -245,24 +260,30 @@ def check_report(raw, kb, active):
     body = _text(lesson.get("body"), 2500)
     technique = _text(lesson.get("technique"), 12)
     out = {
-        "headline": _line(raw.get("headline"), 120),
-        "bottom_line": _text(raw.get("bottom_line"), 700),
-        "changes": _strings(raw.get("changes"), 5, 300),
+        "headline": _clip(raw.get("headline"), 110),
+        "executive_summary": _text(raw.get("executive_summary"), 900),
+        "key_findings": [],
         "campaign_notes": {n["slug"]: _line(n.get("note"), 300)
                            for n in _dicts(raw.get("campaign_notes"), 20)
                            if _name(n.get("slug")) in slugs},
         "lesson": {
-            "title": _line(lesson.get("title"), 120) or "Lesson of the day",
+            "title": _clip(lesson.get("title"), 120) or "Technique of the day",
             "technique": technique if kbmod.TECHNIQUE_RE.match(technique) else "",
             "technique_name": _line(lesson.get("technique_name"), 120),
             "body": body,
             "example": _text(lesson.get("example"), 800),
+            "detection": _text(lesson.get("detection"), 500),
         } if body else None,
         "suggestions": [],
-        "watch": _strings(raw.get("watch"), 3, 200),
+        "outlook": [],
     }
+    for f in _dicts(raw.get("key_findings"), 5):
+        finding = _line(f.get("finding"), 320)
+        if finding:
+            out["key_findings"].append({"finding": finding, "why": _line(f.get("why"), 320),
+                                        "confidence": _level(f.get("confidence"))})
     for s in _dicts(raw.get("suggestions"), 6):
-        title, text = _line(s.get("title"), 90), _text(s.get("body"), 1500)
+        title, text = _clip(s.get("title"), 90), _text(s.get("body"), 1500)
         ident = suggestion_id(title)
         if not title or not text or ident in raised \
                 or ident in [x["id"] for x in out["suggestions"]]:
@@ -270,10 +291,18 @@ def check_report(raw, kb, active):
         out["suggestions"].append({
             "id": ident, "title": title,
             "area": _choice(s.get("area"), AREAS, "sensor"),
+            "priority": _choice(s.get("priority"), reportmod.PRIORITIES, "medium"),
             "body": text, "evidence": _text(s.get("evidence"), 600)})
     out["suggestions"] = out["suggestions"][:3]
-    if not out["headline"]:
-        raise model.StageError("the editor's answer had no headline")
+    for o in _dicts(raw.get("outlook"), 3):
+        expect = _line(o.get("expect"), 300)
+        if expect:
+            out["outlook"].append({
+                "expect": expect,
+                "likelihood": _choice(o.get("likelihood"), reportmod.LIKELIHOODS, "roughly even"),
+                "watch_for": _line(o.get("watch_for"), 250)})
+    if not out["headline"] or not out["executive_summary"]:
+        raise model.StageError("the editor's answer had no headline or no executive summary")
     return out
 
 
