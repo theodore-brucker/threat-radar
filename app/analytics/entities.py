@@ -66,7 +66,7 @@ def decode_token(value):
 
 def _cut_day(con, days):
     ts = db.TsExpr(con)
-    return str(ts.cutoff(db.clamp_days(days, default=30)))[:10]
+    return ts.cutoff_day(db.clamp_days(days, default=30))
 
 
 # ---------------------------------------------------------------------------

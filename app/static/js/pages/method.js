@@ -78,7 +78,7 @@ export async function render() {
     panel("How fresh this is", null, [
       h("dl", { class: "facts" }, [
         h("dt", { text: "Data covers" }),
-        h("dd", { text: cov.first_day && cov.last_day ? `${cov.first_day} to ${cov.last_day} (UTC days)` : "No data yet" }),
+        h("dd", { text: cov.first_day && cov.last_day ? `${cov.first_day} to ${cov.last_day} (Eastern days)` : "No data yet" }),
       ]),
       h("p", {}, [
         h("span", { text: "When each stage last ran, in Eastern time, is on the " }),

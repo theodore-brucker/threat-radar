@@ -157,9 +157,32 @@ export const num = (n) =>
 export const pct = (n, digits = 1) =>
   n === null || n === undefined ? "-" : `${Number(n).toFixed(digits)}%`;
 
+/* Times arrive from the API already in Eastern time with their offset
+   (2026-11-20T16:42:51-05:00), so slicing gives the Eastern clock reading.
+   A value that still says UTC is converted here, so a field the server
+   missed does not show a UTC time as if it were Eastern. */
+const EASTERN = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+});
+
+function eastern(s) {
+  const str = String(s);
+  if (!/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}.*(Z|[+-]00:?00)$/.test(str)) return str;
+  const d = new Date(str.replace(" ", "T"));
+  if (isNaN(d)) return str;
+  const p = Object.fromEntries(EASTERN.formatToParts(d).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+}
+
 export function shortDate(s) {
   if (!s) return "-";
-  return String(s).slice(0, 16).replace("T", " ");
+  return eastern(s).slice(0, 16).replace("T", " ");
+}
+
+/* The Eastern day of a time, or the value itself when it is already a day. */
+export function easternDay(s) {
+  return eastern(s || "").slice(0, 10);
 }
 
 export function mid(s, head = 10, tail = 6) {
@@ -698,7 +721,7 @@ const ENTITY_PATH = {
   session: (v) => `/session/${encodeURIComponent(v)}`,
   sample: (v) => `/sample/${encodeURIComponent(v)}`,
   hassh: (v) => `/hassh/${encodeURIComponent(v)}`,
-  day: (v) => `/day/${encodeURIComponent(String(v).slice(0, 10))}`,
+  day: (v) => `/day/${encodeURIComponent(easternDay(v))}`,
   credential: (v) => `/credential/${b64u(`${v.username || ""}\x00${v.password || ""}`)}`,
   url: (v) => `/url/${b64u(v)}`,
 };
@@ -734,7 +757,7 @@ export function entity(type, value, label) {
 export function ipLink(ip) { return entity("ip", ip, ip || "-"); }
 
 export function dayLink(ts) {
-  const d = String(ts || "").slice(0, 10);
+  const d = easternDay(ts);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return h("span", { class: "mono sub2", text: shortDate(ts) });
   return entity("day", d, shortDate(ts));
 }

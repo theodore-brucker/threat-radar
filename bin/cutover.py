@@ -12,13 +12,15 @@ elsewhere first; this tool does not copy anything off the host.
   samples  List captured samples that were only sighted before the cutover,
            one sha256 per line, for packing and removal.
   purge    Delete everything dated before the cutover. Dry run unless
-           --apply. The cutover is a UTC day or a UTC time; with a time,
-           rows for that day are removed whole and rebuilt by the next
-           worker pass from the raw events after the time. Lifetime tables are cleared and rebuilt by the next
+           --apply. The cutover is a US Eastern day or a UTC time; with a
+           time, rows for its Eastern day are removed whole and rebuilt by
+           the next worker pass from the raw events after the time. Lifetime tables are cleared and rebuilt by the next
            intel worker pass. Lookups, submissions and the incident trends
            tables are kept, because they are not tied to the period.
 
-Every day boundary is UTC, matching the per-day tables.
+Every day boundary is US Eastern, matching the per-day tables (see
+app/analytics/clock.py). A cut given as a time is UTC, like the stored
+timestamps it is compared with.
 """
 
 import argparse
@@ -33,6 +35,7 @@ APP_DIR = os.environ.get("TR_APP", os.path.dirname(os.path.dirname(os.path.abspa
 if APP_DIR not in sys.path:
     sys.path.insert(0, APP_DIR)
 
+from app.analytics import clock  # noqa: E402
 from app.analytics import db  # noqa: E402
 from app.analytics import export as exportmod  # noqa: E402
 from app.analytics import persona as personamod  # noqa: E402
@@ -83,7 +86,7 @@ def parse_day(value):
 
 
 def parse_cut(value):
-    """A UTC day (YYYY-MM-DD) or a UTC time (YYYY-MM-DDTHH:MM[:SS][Z]).
+    """An Eastern day (YYYY-MM-DD) or a UTC time (YYYY-MM-DDTHH:MM[:SS][Z]).
 
     A time comes back as YYYY-MM-DDTHH:MM:SS with no zone suffix. Raw event
     timestamps carry fractional seconds before the Z, and '.' sorts below
@@ -98,7 +101,7 @@ def parse_cut(value):
         except ValueError:
             continue
     raise argparse.ArgumentTypeError(
-        f"not a YYYY-MM-DD day or YYYY-MM-DDTHH:MM[:SS] UTC time: {value!r}")
+        f"not a YYYY-MM-DD Eastern day or YYYY-MM-DDTHH:MM[:SS] UTC time: {value!r}")
 
 
 def raw_bound(con, cut):
@@ -114,10 +117,11 @@ def raw_bound(con, cut):
 
 def first_whole_day(cut):
     """Per-day rows on this day and later are kept as they are. A time cut
-    makes its own day partial, so that day's rows go too and are rebuilt."""
+    makes its own Eastern day partial, so that day's rows go too and are
+    rebuilt."""
     if len(cut) == 10:
         return cut
-    return (dt.date.fromisoformat(cut[:10]) + dt.timedelta(days=1)).isoformat()
+    return (dt.date.fromisoformat(clock.day(cut)) + dt.timedelta(days=1)).isoformat()
 
 
 def has(con, table):
@@ -437,7 +441,7 @@ def build_report(con, before, since=None):
     cmds = command_sections(con, since, before)
     sections = [
         ("coverage", "Coverage", "facts", {
-            "period": f"{since} up to but not including {before} (UTC days)",
+            "period": f"{since} up to but not including {before} (Eastern days)",
             "days_with_rollups": con.execute(
                 "SELECT COUNT(DISTINCT day) FROM eventid_daily WHERE day >= ? AND day < ?",
                 (since, before)).fetchone()[0],
@@ -635,9 +639,14 @@ def purge(con, before, vacuum=False):
 
 
 def cmd_purge(args):
-    now = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
-    if args.before > now[:len(args.before)]:
-        log(f"refusing: {args.before} is later than now ({now} UTC), so the purge would "
+    # A day cut is an Eastern day and a time cut is UTC, so each is checked
+    # against now in its own terms.
+    if len(args.before) == 10:
+        now, zone = clock.today(), "Eastern"
+    else:
+        now, zone = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"), "UTC"
+    if args.before > now:
+        log(f"refusing: {args.before} is later than now ({now} {zone}), so the purge would "
             f"also remove data from the period it is meant to keep")
         return 2
     if not args.apply:
@@ -674,7 +683,7 @@ def main(argv=None):
 
     p = sub.add_parser("purge", help="delete everything dated before the cutover")
     p.add_argument("--before", required=True, type=parse_cut,
-                   help="first UTC day, or UTC time YYYY-MM-DDTHH:MM, to keep")
+                   help="first Eastern day, or UTC time YYYY-MM-DDTHH:MM, to keep")
     p.add_argument("--apply", action="store_true", help="delete; without it, only count")
     p.add_argument("--vacuum", action="store_true", help="VACUUM afterwards to return space")
 

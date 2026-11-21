@@ -58,7 +58,7 @@ def summary(con, days=30):
     # ones seen inside the window.
     flagged = 0
     if db.table_exists(con, "payload_intel") and db.table_exists(con, "payload_daily"):
-        cut_day = str(ts.cutoff(days))[:10]
+        cut_day = ts.cutoff_day(days)
         flagged = (
             db.qone(
                 con,
@@ -94,7 +94,7 @@ def list_payloads(con, days=30, direction=None, limit=200):
         return {"built": False, "payloads": []}
 
     ts = db.TsExpr(con)
-    cut_day = str(ts.cutoff(days))[:10]
+    cut_day = ts.cutoff_day(days)
     where = ["day >= ?"]
     params = [cut_day]
     if direction in ("download", "upload"):
@@ -190,7 +190,7 @@ def hosts(con, days=30, limit=50):
     if not db.table_exists(con, "payload_daily"):
         return {"built": False, "hosts": []}
     ts = db.TsExpr(con)
-    cut_day = str(ts.cutoff(days))[:10]
+    cut_day = ts.cutoff_day(days)
     rows = db.qall(
         con,
         """

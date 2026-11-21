@@ -16,8 +16,8 @@ FIELDS = ("connections", "authenticated", "shell", "transferred", "captured")
 def _day_list(con, days, offset=0):
     """The N days ending `offset` periods back, minus known outage days."""
     ts = db.TsExpr(con)
-    end = str(ts.cutoff(offset * days))[:10]
-    start = str(ts.cutoff((offset + 1) * days))[:10]
+    end = ts.cutoff_day(offset * days)
+    start = ts.cutoff_day((offset + 1) * days)
     rows = db.qall(
         con,
         "SELECT DISTINCT day FROM asn_ip_daily WHERE day >= ? AND day < ? ORDER BY day",
@@ -62,7 +62,7 @@ def _measure(con, day_list, field):
         row = db.qone(
             con,
             "SELECT COUNT(DISTINCT shasum) n FROM payloads "
-            "WHERE shasum <> '' AND substr(last_seen,1,10) BETWEEN ? AND ?",
+            "WHERE shasum <> '' AND et_day(last_seen) BETWEEN ? AND ?",
             (lo, hi),
         )
     return (row or {}).get("n") or 0, len(days)
@@ -106,7 +106,7 @@ def odds(con, days=30):
     """The funnel restated as odds, which is the form that survives a meeting."""
     days = db.clamp_days(days, default=30)
     ts = db.TsExpr(con)
-    cut = str(ts.cutoff(days))[:10]
+    cut = ts.cutoff_day(days)
     row = db.qone(
         con,
         """
@@ -141,7 +141,7 @@ def concentration(con, days=30, top=3):
     useful executive fact this sensor produces."""
     days = db.clamp_days(days, default=30)
     ts = db.TsExpr(con)
-    cut = str(ts.cutoff(days))[:10]
+    cut = ts.cutoff_day(days)
     rows = db.qall(
         con,
         """
@@ -171,7 +171,7 @@ def goals(con, days=30, top=6):
     if not db.table_exists(con, "cred_pair_daily"):
         return []
     ts = db.TsExpr(con)
-    cut = str(ts.cutoff(days))[:10]
+    cut = ts.cutoff_day(days)
     rows = db.qall(
         con,
         """

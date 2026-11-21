@@ -164,6 +164,10 @@ ones specific to the interface:
   apologise.
 - Headings have no full stop. Sentences do.
 - No dot-separated meta strings ("A · B · C") and no arrows appended to links.
+- Times are US Eastern, written `2026-11-20 16:42` (24-hour), and days are
+  Eastern days. The API sends times already converted, with their offset;
+  render them through `shortDate()` and `dayLink()`, which also convert any
+  UTC value that slips through.
 - Keep technical terms where an analyst needs them (HASSH, SHA-256), and use
   `term()` to give the Summary reader the plain reading on hover.
 

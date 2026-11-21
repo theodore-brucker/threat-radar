@@ -9,6 +9,7 @@ each group becomes a single IN lookup against the fact table that already
 holds the summary. Nothing here reads raw_events.
 """
 
+from . import clock
 from . import db
 from .entities import (ASN_RE, DAY_RE, HASSH_RE, IP_RE, BadEntity,
                        decode_token)
@@ -61,8 +62,8 @@ def _ips(con, values):
                  ("events", r["events"]),
                  ("commands", r["commands"]),
                  ("files moved", r["transfers"]),
-                 ("first seen", (r["first_seen"] or "")[:10]),
-                 ("last seen", (r["last_seen"] or "")[:10])],
+                 ("first seen", clock.day(r["first_seen"]) or ""),
+                 ("last seen", clock.day(r["last_seen"]) or "")],
                 tone="bad" if stage >= 3 else "warn" if stage == 2 else None,
             )
     return out
@@ -109,8 +110,8 @@ def _asns(con, values):
              ("sessions", r["sessions"]),
              ("events", r["events"]),
              ("furthest any reached", r["max_stage"]),
-             ("first seen", (r["first_seen"] or "")[:10]),
-             ("last seen", (r["last_seen"] or "")[:10])],
+             ("first seen", clock.day(r["first_seen"]) or ""),
+             ("last seen", clock.day(r["last_seen"]) or "")],
         )
         for s in spellings:
             out[s] = card
@@ -151,8 +152,8 @@ def _credentials(con, values):
             [("attempts", r["attempts"]),
              ("succeeded", r["successes"]),
              ("distinct addresses", r["distinct_ips"]),
-             ("first seen", (r["first_seen"] or "")[:10]),
-             ("last seen", (r["last_seen"] or "")[:10])],
+             ("first seen", clock.day(r["first_seen"]) or ""),
+             ("last seen", clock.day(r["last_seen"]) or "")],
             tone="bad" if r["successes"] else None,
         )
     return out
@@ -223,8 +224,8 @@ def _urls(con, values):
              ("family", vt["label"] if vt else None),
              ("fetches", r["hits"]),
              ("distinct files", r["hashes"]),
-             ("first seen", (r["first_seen"] or "")[:10]),
-             ("last seen", (r["last_seen"] or "")[:10])],
+             ("first seen", clock.day(r["first_seen"]) or ""),
+             ("last seen", clock.day(r["last_seen"]) or "")],
             tone="bad" if vt and vt["verdict"] in ("malicious", "suspicious") else None,
         )
     return out
@@ -316,7 +317,7 @@ def _samples(con, values):
              ("family", vt["label"] if vt else None),
              ("transfers", r["hits"]),
              ("source urls", r["urls"]),
-             ("last seen", (r["last_seen"] or "")[:10])],
+             ("last seen", clock.day(r["last_seen"]) or "")],
             tone="bad" if vt and vt["verdict"] in ("malicious", "suspicious") else None,
         )
     return out

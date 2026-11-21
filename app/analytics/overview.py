@@ -10,7 +10,7 @@ from . import db
 def headline(con, days=30):
     days = db.clamp_days(days, default=30)
     ts = db.TsExpr(con)
-    cut_day = str(ts.cutoff(days))[:10]
+    cut_day = ts.cutoff_day(days)
 
     totals = db.qone(
         con,
@@ -74,7 +74,7 @@ def headline(con, days=30):
             # the worker records every known hash, counting it here would
             # report the whole capture set as contributed.
             "WHERE status = 'submitted' "
-            "AND substr(submitted_at,1,10) >= ? AND submitted_at >= ?",
+            "AND et_day(submitted_at) >= ? AND submitted_at >= ?",
             (cut_day, db.data_floor(con)),
         ) or {}).get("n", 0)
 
@@ -151,6 +151,6 @@ def notable_sessions(con, days=30, limit=12):
         ORDER BY r.weight DESC, r.first_seen DESC
         LIMIT :lim
         """,
-        {"cut": str(db.TsExpr(con).cutoff(db.clamp_days(days, default=30)))[:10],
+        {"cut": db.TsExpr.cutoff_day(db.clamp_days(days, default=30)),
          "lim": int(limit)},
     )

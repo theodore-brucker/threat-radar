@@ -22,8 +22,7 @@ def funnel(con, days=30):
     if not db.table_exists(con, "session_facts"):
         return {"built": False}
     ts = db.TsExpr(con)
-    cut_day = ts.cutoff(days)
-    cut_day = (cut_day if isinstance(cut_day, str) else "")[:10] or "0000-00-00"
+    cut_day = ts.cutoff_day(days)
 
     row = db.qone(
         con,
@@ -87,8 +86,7 @@ def silent_sessions(con, days=30, limit=100, offset=0):
     if not db.table_exists(con, "session_facts"):
         return {"built": False, "sessions": []}
     ts = db.TsExpr(con)
-    cut_day = ts.cutoff(days)
-    cut_day = (cut_day if isinstance(cut_day, str) else "")[:10] or "0000-00-00"
+    cut_day = ts.cutoff_day(days)
 
     rows = db.qall(
         con,

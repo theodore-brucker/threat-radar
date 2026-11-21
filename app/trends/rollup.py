@@ -9,7 +9,7 @@ number.
 import datetime as dt
 import json
 
-from app.analytics import db
+from app.analytics import clock, db
 
 CLUSTER_MIN = 3
 CLUSTER_DAYS = 5
@@ -118,7 +118,7 @@ def fanouts(con):
 
 
 def rebuild(con, today=None):
-    today = today or dt.date.today().isoformat()
+    today = today or clock.today()
     counted = db.qall(con, "SELECT id, started, cause_status FROM incident "
                            "WHERE kind IN ('org','vendor') AND started <= ?", (today,))
     weeks, fit = weekly(counted, today)

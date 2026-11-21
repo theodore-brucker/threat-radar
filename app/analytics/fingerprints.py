@@ -5,6 +5,7 @@ raw_events, which is why it timed out at 1.37M rows. Same output, built once
 per day into client_fp_daily and read from there.
 """
 
+from . import clock
 from . import db
 
 KEX_EVENT = "cowrie.client.kex"
@@ -65,7 +66,7 @@ def overview(con, days=30, limit=25):
     if not db.table_exists(con, "client_fp_daily"):
         return {"built": False, "fingerprints": []}
     ts = db.TsExpr(con)
-    cut_day = str(ts.cutoff(days))[:10]
+    cut_day = ts.cutoff_day(days)
 
     rows = db.qall(
         con,
@@ -142,12 +143,8 @@ def _days_to_build(con, ts, backfill_all, recent_days):
         return []
     import datetime as dt
 
-    if ts.epoch:
-        lo = dt.datetime.fromtimestamp(row[0], dt.timezone.utc).date()
-        hi = dt.datetime.fromtimestamp(row[1], dt.timezone.utc).date()
-    else:
-        lo = dt.date.fromisoformat(str(row[0])[:10])
-        hi = dt.date.fromisoformat(str(row[1])[:10])
+    lo = dt.date.fromisoformat(clock.day(row[0]))
+    hi = dt.date.fromisoformat(clock.day(row[1]))
     days, cur = [], lo
     while cur <= hi:
         days.append(cur.isoformat())

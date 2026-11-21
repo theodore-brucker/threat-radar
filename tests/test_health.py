@@ -27,13 +27,13 @@ def stamp(when):
 
 class EasternTimeTests(DBTestCase):
     def test_winter_is_est(self):
-        self.assertEqual(health.eastern(at(2026, 11, 21, 2, 12)), "2026-11-20 9:12 PM EST")
+        self.assertEqual(health.eastern(at(2026, 11, 21, 2, 12)), "2026-11-20 21:12 EST")
 
     def test_summer_is_edt(self):
-        self.assertEqual(health.eastern(at(2026, 7, 4, 16, 5)), "2026-07-04 12:05 PM EDT")
+        self.assertEqual(health.eastern(at(2026, 7, 4, 16, 5)), "2026-07-04 12:05 EDT")
 
-    def test_midnight_is_twelve_am(self):
-        self.assertEqual(health.eastern(at(2026, 11, 20, 5, 0)), "2026-11-20 12:00 AM EST")
+    def test_midnight_is_hour_zero(self):
+        self.assertEqual(health.eastern(at(2026, 11, 20, 5, 0)), "2026-11-20 00:00 EST")
 
     def test_no_time_is_none(self):
         self.assertIsNone(health.eastern(None))
@@ -77,8 +77,8 @@ class StatusTests(DBTestCase):
         self.beat(self.pull_hb, at(2026, 11, 21, 2, 10))
         self.beat(self.fetch_hb, at(2026, 11, 21, 1, 30))
         rows = self.rows()
-        self.assertEqual(rows["pull"]["at_local"], "2026-11-20 9:10 PM EST")
-        self.assertEqual(rows["samples"]["at_local"], "2026-11-20 8:30 PM EST")
+        self.assertEqual(rows["pull"]["at_local"], "2026-11-20 21:10 EST")
+        self.assertEqual(rows["samples"]["at_local"], "2026-11-20 20:30 EST")
 
     def test_events_and_logins_come_from_raw_events(self):
         self.add_event("cowrie.session.connect", "a", "198.51.100.1", "2026-11-21T02:12:30Z")
@@ -91,7 +91,7 @@ class StatusTests(DBTestCase):
 
     def test_cowrie_microsecond_timestamps_parse(self):
         self.add_event("cowrie.session.connect", "a", "198.51.100.1", "2026-11-21T02:12:30.123456Z")
-        self.assertEqual(self.rows()["events"]["at_local"], "2026-11-20 9:12 PM EST")
+        self.assertEqual(self.rows()["events"]["at_local"], "2026-11-20 21:12 EST")
 
     def test_worker_and_prune_come_from_state(self):
         db.set_state(self.con, "last_run", "2026-11-21T02:00:00Z")
@@ -113,7 +113,7 @@ class StatusTests(DBTestCase):
     def test_checked_at_uses_the_clock_given(self):
         out = health.status(self.con, now=at(2026, 11, 21, 2, 15))
         self.assertEqual(out["checked_at"], stamp(at(2026, 11, 21, 2, 15)))
-        self.assertEqual(out["checked_at_local"], "2026-11-20 9:15 PM EST")
+        self.assertEqual(out["checked_at_local"], "2026-11-20 21:15 EST")
 
     def test_storage_note_passes_through(self):
         db.set_state(self.con, "storage_status", "The database is 5000 MB against a 4096 MB cap.")

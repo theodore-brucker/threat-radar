@@ -21,30 +21,20 @@ A row with no record (a fresh install, a stage that has never run) has
 
 import datetime as dt
 import os
-from zoneinfo import ZoneInfo
 
+from . import clock
 from . import db
 from . import outages
 from . import persona
 
-DISPLAY_TZ = ZoneInfo("America/New_York")
-TZ_NAME = "Eastern time"
+TZ_NAME = clock.NAME
 
 BASE = os.environ.get("TR_BASE", "/opt/threat-radar")
 PULL_HEARTBEAT = os.path.join(BASE, "spool", ".pulled")
 FETCH_HEARTBEAT = os.path.join(
     os.environ.get("TR_SAMPLE_DIR", os.path.join(BASE, "data", "samples")), ".fetched")
 
-
-def parse_ts(value):
-    """A stored timestamp as an aware UTC datetime, or None."""
-    if not value:
-        return None
-    try:
-        t = dt.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
+parse_ts = clock.parse
 
 
 def heartbeat(path):
@@ -55,11 +45,8 @@ def heartbeat(path):
 
 
 def eastern(when):
-    """'2026-11-20 9:12 PM EST', or None. EST or EDT follows the date."""
-    if when is None:
-        return None
-    t = when.astimezone(DISPLAY_TZ)
-    return f"{t:%Y-%m-%d} {t.hour % 12 or 12}:{t:%M} {t:%p} {t:%Z}"
+    """'2026-11-20 21:12 EST', or None. EST or EDT follows the date."""
+    return clock.fmt(when, zone=True)
 
 
 def _newest(con, eventid):
@@ -117,7 +104,7 @@ def _rows(con):
 
 
 def status(con, now=None):
-    now = now or dt.datetime.now(dt.timezone.utc)
+    now = now or clock.now()
     items = [
         {
             "key": key,

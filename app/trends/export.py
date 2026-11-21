@@ -7,7 +7,7 @@ context describes this dataset and what it cannot support.
 
 import re
 
-from app.analytics import db
+from app.analytics import clock
 from app.trends import STATUS_LABEL, read
 
 SCHEMA = "threat-radar.trends-export/1"
@@ -27,6 +27,8 @@ CONTEXT = [
     "Leak-site claims appear as the group name and a link only. The claim "
     "data belongs to Ransomware.live (https://ransomware.live), whose terms "
     "do not allow republishing it.",
+    "Dates are US Eastern days. Times are US Eastern, written as ISO 8601 "
+    "with their UTC offset.",
 ]
 
 BRIEF = [
@@ -78,10 +80,10 @@ def build(con, etype, value):
     return {
         "schema": SCHEMA,
         "subject": {"type": etype, "label": TYPES[etype], "id": str(value)},
-        "generated_at": db.utcnow(),
+        "generated_at": clock.iso(clock.now()),
         "window_days": None,
         "context": {"about": CONTEXT},
-        "sections": sections,
+        "sections": clock.localize(sections),
         "limits": [],
     }
 

@@ -47,10 +47,14 @@ never counted.
 When the sensor changes enough that earlier data is a different measurement
 (a new address or persona), `bin/cutover.py` closes the earlier period: it
 writes a report on it, lists samples sighted only in it, and purges every row
-dated before the cutover (a UTC day or time) once the database has been
+dated before the cutover (a US Eastern day, or a UTC time) once the database has been
 archived elsewhere.
 Lookups, submissions and the incident trends tables are kept. The purge sets
 a floor that ingest honours, so a spool rescan cannot restore removed events.
+
+Stored timestamps are UTC. Per-day rollups are keyed by US Eastern day
+(midnight to midnight in America/New_York), and the dashboard and exports
+show every time in Eastern time.
 
 The rollups keep counts, first and last seen dates, and the addresses that
 contributed to them, so addresses remain in the long-term record after the

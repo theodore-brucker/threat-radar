@@ -32,6 +32,7 @@ import os
 import re
 import secrets
 
+from . import clock
 from . import db
 from . import entities as entmod
 from . import persona as personamod
@@ -119,7 +120,8 @@ READING = [
     "what this session did with it.",
     "Raw events are pruned after a retention period while daily counts are "
     "kept, so an older session can be listed with no event record.",
-    "All times are UTC.",
+    "All times are US Eastern time (America/New_York), written as ISO 8601 "
+    "with their UTC offset. Days run midnight to midnight Eastern.",
 ]
 
 STAGE_NOTE = (
@@ -460,7 +462,7 @@ def _redact(obj):
 
 
 def _context(con):
-    epoch = personamod.epoch_for(con, db.utcnow()[:10])
+    epoch = personamod.epoch_for(con, clock.today())
     return {
         "reading": READING,
         "stages": [{"stage": i, "meaning": m} for i, m in enumerate(STAGES)],
@@ -492,10 +494,10 @@ def build(con, etype, value, days=30):
     bundle = {
         "schema": SCHEMA,
         "subject": {"type": etype, "label": TYPES[etype], "id": value},
-        "generated_at": db.utcnow(),
+        "generated_at": clock.iso(clock.now()),
         "window_days": db.clamp_days(days, default=30) if windowed else None,
         "context": _context(con),
-        "sections": sections,
+        "sections": clock.localize(sections),
         "limits": limits,
     }
     if REDACT:

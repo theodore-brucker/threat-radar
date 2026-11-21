@@ -23,6 +23,7 @@ from app.analytics import asn as asnmod
 from app.analytics import credentials as credmod
 from app.analytics import cards as cardmod
 from app.analytics import contributions as contribmod
+from app.analytics import clock
 from app.analytics import db
 from app.analytics import entities as entmod
 from app.analytics import escalation
@@ -54,7 +55,9 @@ def _con():
 
 
 def ok(data, days=None):
-    body = {"ok": True, "generated_at": db.utcnow(), "data": data}
+    """The envelope. Stored UTC times in `data` are rewritten as Eastern ISO
+    with an offset (clock.localize), so every page shows Eastern time."""
+    body = {"ok": True, "generated_at": clock.iso(clock.now()), "data": clock.localize(data)}
     if days is not None:
         body["window_days"] = days
     return body

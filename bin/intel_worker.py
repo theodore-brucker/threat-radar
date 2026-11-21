@@ -34,6 +34,7 @@ if APP_DIR not in sys.path:
     sys.path.insert(0, APP_DIR)
 
 from app.analytics import credentials as credmod  # noqa: E402
+from app.analytics import clock  # noqa: E402
 from app.analytics import db  # noqa: E402
 from app.analytics import escalation as escmod  # noqa: E402
 from app.analytics import families as fammod  # noqa: E402
@@ -58,6 +59,7 @@ MIGRATIONS = [
     os.path.join(APP_DIR, "migrations", "015_us_address.sql"),
     os.path.join(APP_DIR, "migrations", "016_file_gateway.sql"),
     os.path.join(APP_DIR, "migrations", "017_gateway_from_cutover.sql"),
+    os.path.join(APP_DIR, "migrations", "018_eastern_days.sql"),
 ]
 # The service account does not own the repository, so the lock lives in the
 # unit's RuntimeDirectory. The fallback for a run by hand is the database's
@@ -182,12 +184,8 @@ def all_days(con, ts):
     row = con.execute("SELECT MIN(ts) AS lo, MAX(ts) AS hi FROM v_events").fetchone()
     if not row or row["lo"] is None:
         return []
-    if ts.epoch:
-        lo = dt.datetime.fromtimestamp(row["lo"], dt.timezone.utc).date()
-        hi = dt.datetime.fromtimestamp(row["hi"], dt.timezone.utc).date()
-    else:
-        lo = dt.date.fromisoformat(str(row["lo"])[:10])
-        hi = dt.date.fromisoformat(str(row["hi"])[:10])
+    lo = dt.date.fromisoformat(clock.day(row["lo"]))
+    hi = dt.date.fromisoformat(clock.day(row["hi"]))
     out, cur = [], lo
     while cur <= hi:
         out.append(cur.isoformat())
@@ -662,8 +660,7 @@ def build_credentials(con, backfill_all=False):
 
     # Campaign to infrastructure mapping over the last CRED_DAYS days of the
     # per-day table, rather than over whatever raw events happen to remain.
-    cut_day = (dt.datetime.now(dt.timezone.utc).date()
-               - dt.timedelta(days=CRED_DAYS)).isoformat()
+    cut_day = clock.days_ago(CRED_DAYS)
     tag_ips = {}
     for r in con.execute(
         "SELECT username, password, src_ip, SUM(attempts) FROM cred_ip_daily"
@@ -1285,7 +1282,7 @@ def _mb_comment(first_day, via_url, via_upload):
         how = "pushed over SFTP/SCP"
     else:
         how = "written in-band during the session"
-    return f"Captured by an SSH honeypot, first seen {first_day} UTC, {how}."
+    return f"Captured by an SSH honeypot, first seen {first_day} (US Eastern), {how}."
 
 
 def _mb_lookup(con, sha):
@@ -1349,7 +1346,7 @@ def submit_bazaar(con):
         ORDER BY first_seen DESC
         """,
     )
-    today = dt.datetime.now(dt.timezone.utc).date()
+    today = dt.date.fromisoformat(clock.today())
     budget = _remaining(con, "mb", MB_SUBMIT_MAX, MB_DAILY_CAP)
     log(f"bazaar: {len(rows)} unrecorded hash(es), budget {budget}")
 
@@ -1357,7 +1354,7 @@ def submit_bazaar(con):
     blocked = None
     for row in rows:
         sha = row["sha"]
-        first_day = str(row["first_seen"] or "")[:10]
+        first_day = clock.day(row["first_seen"]) or ""
         try:
             age = (today - dt.date.fromisoformat(first_day)).days
         except ValueError:
