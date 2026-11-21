@@ -83,6 +83,15 @@ class NotFoundTests(DBTestCase):
         self.assertIn("boot.js", r.text)
         self.assertIn("content-security-policy", r.headers)
 
+    def test_scripts_are_revalidated_after_a_deploy(self):
+        # A browser that reuses a cached boot.js against a new shell leaves
+        # the page half-updated, so every static file must be revalidated.
+        for path in ("/static/js/boot.js", "/static/js/core.js", "/static/css/app.css"):
+            with self.subTest(path=path):
+                r = self.client.get(path)
+                self.assertEqual(r.status_code, 200)
+                self.assertIn("no-cache", r.headers.get("cache-control", ""))
+
     def test_api_and_static_misses_stay_plain(self):
         r = self.client.get("/api/v1/no-such-route")
         self.assertEqual(r.status_code, 404)
