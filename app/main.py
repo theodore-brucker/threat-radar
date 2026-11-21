@@ -36,6 +36,12 @@ async def security_headers(request, call_next):
     response = await call_next(request)
     for key, value in SECURITY_HEADERS.items():
         response.headers.setdefault(key, value)
+    # Static files carry an ETag and Last-Modified but no Cache-Control, so a
+    # browser may reuse a cached script for hours after a deploy without
+    # asking. The shell HTML is always fresh, so a new page then runs against
+    # old JavaScript. no-cache makes the browser revalidate each file, which
+    # costs a 304 when nothing changed.
+    response.headers.setdefault("Cache-Control", "no-cache")
     return response
 
 
