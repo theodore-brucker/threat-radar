@@ -26,6 +26,9 @@ Environment=TR_TEAM_KB=/var/lib/radar-team-pub/kb
 # publisher cannot read.
 Environment=HOME=/var/cache/radar-team
 Environment=MPLCONFIGDIR=/var/cache/radar-team/matplotlib
+# Each stage's line reaches the journal as the stage finishes, and not all at
+# once when the run ends.
+Environment=PYTHONUNBUFFERED=1
 CacheDirectory=radar-team
 CacheDirectoryMode=0700
 # Stage outputs and the outbox. Group-readable so the publisher, which has

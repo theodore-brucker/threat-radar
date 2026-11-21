@@ -123,7 +123,8 @@ def run(con, day, kb_dir, state_dir, use_model=True, ask=model.ask_json, log=pri
         after["campaigns"], after["techniques"], day,
         overview=bool(overview) or os.path.exists(os.path.join(kb_dir, "charts", "overview.png")))
 
-    report = reportmod.assemble(bundle, reading, findings, active, edited, problems, drawn)
+    report = reportmod.assemble(bundle, reading, findings, active, edited, problems, drawn,
+                                tracked)
     if edited and _is_week_end(day):
         written = stage("writer", lambda: _draft(after, kb, day, ask))
         if written:
