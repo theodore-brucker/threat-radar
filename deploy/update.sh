@@ -58,6 +58,11 @@ echo "==> syncing dependencies"
 # package that changed on the index, or one the lock does not list, fails the
 # install instead of landing silently on the collector.
 "$REPO/venv/bin/pip" install --quiet --no-cache-dir --require-hashes -r "$REPO/requirements.txt"
+# The intel team worker has its own environment, present only where the team
+# is set up (docs/TEAM.md).
+if [ -x "$REPO/venv-team/bin/pip" ]; then
+  "$REPO/venv-team/bin/pip" install --quiet --no-cache-dir --require-hashes -r "$REPO/requirements-team.txt"
+fi
 
 echo "==> ownership"
 chown -R root:root "$REPO"

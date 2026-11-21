@@ -1,0 +1,11 @@
+# What the intel team worker needs beyond the standard library: matplotlib,
+# to draw the report's charts. It installs into its own environment
+# (venv-team), so the dashboard and the collector's workers never load it.
+# The two constraint files keep any package this lock shares with the others
+# at the same version, so CI can install all three together.
+#
+#   uv pip compile requirements-team.in --universal --generate-hashes \
+#     --python-version 3.12 -o requirements-team.txt
+-c requirements.txt
+-c requirements-dev.txt
+matplotlib>=3.10

@@ -171,7 +171,7 @@ def session_detail(con, session):
 
     cur = con.execute(
         """SELECT ts, eventid, payload, src_ip FROM v_events
-           WHERE session=? ORDER BY ts, rowid""", (session,))
+           WHERE session=? ORDER BY ts, id""", (session,))
     raw = _rows(cur)
     if not raw:
         return {"error": "unknown session"}
@@ -279,6 +279,14 @@ def _safe_text(body):
     """
     text = body.decode("utf-8", "replace")
     text = "".join(c for c in text if c in "\n\t" or 32 <= ord(c) < 127 or ord(c) > 159)
+    return defang(text)
+
+
+def defang(text):
+    """Text with its URLs and IPv4 addresses made unclickable and unrunnable:
+    hxxp, hxxps and fxp for the schemes, and [.] for the dots in URL hosts
+    and addresses. A mail client or a Markdown page turns a bare URL into a
+    link, and these are attacker infrastructure."""
     text = _SCHEME.sub(lambda m: (m.group(1) + "xx" + m.group(2) + "://") if m.group(1)
                        else (m.group(3) + "xp://"), text)
     text = _URL_HOST.sub(lambda m: m.group(1) + m.group(2).replace(".", "[.]"), text)

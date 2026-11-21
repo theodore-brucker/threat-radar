@@ -43,6 +43,8 @@ never counted.
 | Per-day rollups and lifetime tables | collector database | indefinitely |
 | Captured samples | sensor and collector | indefinitely |
 | Reputation lookups | collector database | refreshed on a TTL, kept |
+| Intel team stage outputs and outboxes | collector | 14 days |
+| Intel team reports and knowledge base | private repository | indefinitely |
 
 When the sensor changes enough that earlier data is a different measurement
 (a new address or persona), `bin/cutover.py` closes the earlier period: it
@@ -59,8 +61,9 @@ show every time in Eastern time.
 The rollups keep counts, first and last seen dates, and the addresses that
 contributed to them, so addresses remain in the long-term record after the
 raw events describing them are gone. Captured samples are malware at rest on
-both hosts. They are readable only by the accounts that collect them, and no
-part of the system serves them.
+both hosts. They are readable only by the accounts that collect them and, on
+the collector, the intel team's worker, which reads text samples to describe
+them. No part of the system serves them.
 
 ## What leaves the system
 
@@ -71,8 +74,22 @@ part of the system serves them.
 - A sample captured in the last ten days that at least one engine flags is
   uploaded to MalwareBazaar under a named account, where it is public.
 
+Where the daily intel team is set up (`docs/TEAM.md`), three more things
+leave:
+
+- The day's record goes to the model API the team's stages run on: source
+  addresses, credential pairs, commands, defanged sample text, and the
+  operator's private description of the sensor.
+- The indicators one stage researches go to web search: file hashes, hosting
+  addresses, network numbers and malware family names.
+- The report and the knowledge base pages, which quote commands and list
+  indicators, go to a private GitHub repository and to the operator's mail
+  provider.
+
 Nothing else is sent anywhere. The sensor's own address, the operator's
-addresses, and the persona are never submitted.
+addresses, and the persona are never submitted to a reputation service, and
+strings listed in `TR_EXPORT_REDACT` are withheld from the model as they are
+from an export.
 
 An export leaves only by the operator's hand. The dashboard builds it and
 sends it nowhere, but it is written to be pasted into a language model, which

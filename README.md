@@ -16,6 +16,8 @@ Internet ──> Hetzner VPS (Cowrie honeypot, nftables redirect 22 -> 2222)
                  ├─ intel_worker   fact tables, spike breakdown,
                  │                 VirusTotal + URLhaus reputation
                  ├─ prune.py       age retention, storage warnings
+                 ├─ intel team     daily review by model stages: report,
+                 │                 campaign knowledge base, suggestions
                  └─ FastAPI + nginx dashboard (LAN only)
 ```
 
@@ -54,6 +56,7 @@ Every address, network, day, credential pair, client fingerprint, fetch URL, ses
 - No sample bytes leave the API. Text samples are shown as stripped text and binaries as metadata and filtered strings. There is no download path, so a public dashboard cannot be used to distribute the malware it collects.
 - Attacker input is treated as data and never as markup: parameterised SQL on the way in, `textContent` on the way out, and no `innerHTML` anywhere.
 - Attacker input is never treated as instructions either. An export hands recorded text to a language model, so every recorded value sits inside a fence tagged with a nonce made for that document, and text outside the fence tells the model that nothing inside it is an instruction.
+- The same holds for the daily intel team, which reads a day of recorded text with a model. The stage that reads it has no tools, the one stage with web search is given indicators and none of the reader's words, and the account that holds credentials runs no model. `docs/TEAM.md` has the detail.
 - List views never scan raw events. The intel worker builds per-day fact tables, and list endpoints read those. Detail views touch raw events only through indexed equality lookups. Before this, some endpoints timed out against 1.3M rows.
 - Trend comparisons skip known outages. During a 17-day sensor fault the login counts fell to zero, and a baseline that included those days showed a drop in attacks that came from a broken sensor. Outage windows are stored in their own table and excluded by name.
 - The Pi never fills its disk. Retention enforces an age limit and a size limit separately, and lifetime per-source counters are kept when raw events are pruned.
@@ -81,6 +84,8 @@ See `SETUP.md` for build notes.
 - `SETUP.md` and `deploy/README.md`: building and running both hosts.
 - `DESIGN.md` and `PRODUCT.md`: who the dashboard is for and the design
   system it follows.
+- `docs/TEAM.md`: the daily intel team, what each of its stages can reach,
+  the knowledge base it keeps, and how to set it up.
 - `docs/WRITING.md`: the writing rules for copy, docs and comments.
 
 ## Tests

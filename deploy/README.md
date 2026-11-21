@@ -41,6 +41,9 @@ needs:
 | `intel.env` | `radar-intel` | VirusTotal and abuse.ch API keys |
 | `excluded_sources.txt` | `radar-intel` | Operator addresses kept out of analysis |
 | `credential_tags.local.json` | `radar-intel`, `radar-web` | Credential rules that would identify this sensor |
+| `team.env` | `radar-team` | The model token for the intel team's stages |
+| `team-pub.env` | `radar-team-sync`, `radar-team-publish` | The knowledge base repository name and the mail addresses, no credentials |
+| `team-pub/github-token`, `team-pub/smtp-password` | `radar-team-sync`, `radar-team-publish` | Loaded with `LoadCredential`, so only those two units can read them |
 
 Splitting the files means the dashboard process never holds the API keys,
 which it has no use for.
@@ -51,8 +54,14 @@ which it has no use for.
 needs: no capabilities, no new privileges, a read-only filesystem
 apart from one or two `ReadWritePaths`, a system call filter, and no network
 at all for ingest, enrichment and pruning; the dashboard may use the
-loopback interface and nothing else. Only the insights worker
-reaches the internet, for reputation lookups and submissions.
+loopback interface and nothing else. The insights worker reaches the
+internet for reputation lookups and submissions, the trends worker for its
+feeds, and the intel team's units for the model API, GitHub and mail.
+
+The intel team runs as two accounts of its own, `radar-team` and
+`radar-team-pub`, each owning one directory under `/var/lib`. `docs/TEAM.md`
+covers why there are two and how to set them up. Its units are installed
+with the rest and do nothing until their timers are enabled.
 
 Drop-ins under `/etc/systemd/system/radar-*.service.d/` override these files.
 The settings that used to live in drop-ins are folded into the units here, so

@@ -1,0 +1,70 @@
+[Unit]
+Description=Threat Radar intel team worker (daily review, charts, knowledge base files)
+After=network-online.target radar-team-sync.service
+# The sync refreshes the knowledge base clone this unit reads. Wants, so a
+# failed sync leaves the worker running against yesterday's clone.
+Wants=network-online.target radar-team-sync.service
+
+[Service]
+Type=oneshot
+User=radar-team
+Group=radar-team
+# radar to read the database and samples, radar-team-pub to read the
+# publisher's clone of the knowledge base. Neither group grants a write.
+SupplementaryGroups=radar radar-team-pub
+WorkingDirectory=/opt/threat-radar
+# Holds CLAUDE_CODE_OAUTH_TOKEN, and optionally TR_TEAM_MODEL and
+# TR_EXPORT_REDACT. This is the only credential the worker has.
+EnvironmentFile=/etc/threat-radar/team.env
+Environment=TR_APP=/opt/threat-radar
+Environment=TR_DB=/opt/threat-radar/data/radar.db
+Environment=TR_SAMPLE_DIR=/opt/threat-radar/data/samples
+Environment=TR_TEAM_STATE=/var/lib/radar-team
+Environment=TR_TEAM_KB=/var/lib/radar-team-pub/kb
+# The claude CLI and matplotlib both keep files under HOME. The account has
+# no home directory, so they get the unit's cache directory, which the
+# publisher cannot read.
+Environment=HOME=/var/cache/radar-team
+Environment=MPLCONFIGDIR=/var/cache/radar-team/matplotlib
+CacheDirectory=radar-team
+CacheDirectoryMode=0700
+# Stage outputs and the outbox. Group-readable so the publisher, which has
+# radar-team as a supplementary group, can read the outbox.
+StateDirectory=radar-team
+StateDirectoryMode=0750
+RuntimeDirectory=radar-team
+RuntimeDirectoryMode=0750
+ExecStart=/opt/threat-radar/venv-team/bin/python /opt/threat-radar/bin/team_worker.py
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=3600
+
+# Hardening, the same as radar-trends. This unit reaches the internet only
+# through the claude CLI, for the model API.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+ProcSubset=pid
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target
