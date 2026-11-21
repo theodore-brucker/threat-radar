@@ -39,7 +39,7 @@ PORT_INTENT = {
 MINING_PORTS = {3333, 4444, 5555, 7777, 8888, 9999, 14444, 45700, 45560}
 
 
-def _intent(port):
+def port_intent(port):
     if port in PORT_INTENT:
         return PORT_INTENT[port]
     if port in MINING_PORTS:
@@ -76,7 +76,7 @@ def overview(con, days=30, limit=50):
         (cut_day,),
     )
     for r in by_port:
-        svc, intent = _intent(int(r["dst_port"] or 0))
+        svc, intent = port_intent(int(r["dst_port"] or 0))
         r["service"] = svc
         r["intent"] = intent
 
@@ -92,7 +92,7 @@ def overview(con, days=30, limit=50):
         (cut_day, limit),
     )
     for r in by_dest:
-        svc, intent = _intent(int(r["dst_port"] or 0))
+        svc, intent = port_intent(int(r["dst_port"] or 0))
         r["service"] = svc
         r["intent"] = intent
 
