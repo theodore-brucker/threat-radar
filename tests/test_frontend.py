@@ -92,7 +92,7 @@ class NotFoundTests(DBTestCase):
         self.assertNotIn("boot.js", r.text)
 
     def test_known_pages_and_the_icons_still_answer_200(self):
-        for path in ("/", "/sources", "/method", "/static/favicon.svg",
+        for path in ("/", "/sources", "/method", "/status", "/static/favicon.svg",
                      "/static/favicon-32.png", "/static/apple-touch-icon.png"):
             with self.subTest(path=path):
                 self.assertEqual(self.client.get(path).status_code, 200)

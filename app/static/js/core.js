@@ -952,6 +952,7 @@ const ROUTES = {
   "/tunnels": () => import("./pages/tunnels.js"),
   "/method": () => import("./pages/method.js"),
   "/trends": () => import("./pages/trends.js"),
+  "/status": () => import("./pages/status.js"),
 };
 
 const PREFIXED = [

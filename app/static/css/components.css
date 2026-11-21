@@ -103,13 +103,6 @@
 .banner.warn { border-color: var(--warn-line); background: var(--warn-tint); }
 .banner.warn .icon { color: var(--warn); }
 
-.stalebar {
-  padding: var(--s2) var(--s4); font-size: var(--fs-13); line-height: var(--lh-ui);
-  text-align: center; border-bottom: 1px solid var(--line);
-}
-.stalebar.fault { background: var(--alert); color: var(--on-accent); font-weight: var(--fw-semibold); }
-.stalebar.warn { background: var(--warn-tint); color: var(--warn); border-bottom-color: var(--warn-line); }
-
 .persona-note {
   margin: var(--s4) 0 0; padding: var(--s2) var(--s3);
   font-size: var(--fs-13); line-height: var(--lh-body); color: var(--ink-soft);

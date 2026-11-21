@@ -32,6 +32,7 @@ from app.analytics import exec_view
 from app.analytics import export as exportmod
 from app.analytics import fingerprints
 from app.analytics import funnel as funnelmod
+from app.analytics import health as healthmod
 from app.analytics import overview as overviewmod
 from app.analytics import payloads as payloadmod
 from app.analytics import sessions as sessmod
@@ -185,7 +186,7 @@ def overview(days: int = Query(30, ge=1, le=3650),
                 "odds": exec_view.odds(con, days),
                 "concentration": exec_view.concentration(con, days),
                 "goals": exec_view.goals(con, days),
-                "health": exec_view.health(con),
+                "health": healthmod.status(con),
             },
             days,
         )
@@ -197,7 +198,7 @@ def overview(days: int = Query(30, ge=1, le=3650),
 def health():
     con = _con()
     try:
-        return ok(exec_view.health(con))
+        return ok(healthmod.status(con))
     finally:
         con.close()
 

@@ -118,7 +118,7 @@ What the tests check:
   parser where it is installed. `test_pull_protocol` and `tests/shell` run the
   pull against a hostile sensor. `test_retention` checks that lifetime tables
   survive the raw window, `test_ingest` covers offsets, `test_health` covers
-  stage health, `test_migrations` applies every migration twice,
+  the pipeline status times, `test_migrations` applies every migration twice,
   `test_readonly` covers read-only connections, `test_frontend` covers HTML
   sinks, the script policy, 404 handling and the design-system rules, and
   `test_writing` checks the rules in `docs/WRITING.md`.
