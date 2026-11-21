@@ -7,7 +7,7 @@ separates what is in scope for a report from what is working as designed.
 
 Anything in this repository that runs on the collector or supports the
 sensor: the ingester, the enrichment and insights workers, the dashboard and
-its API, the pull transport on both ends, the deploy and ownership scripts,
+its API, the intel team, the pull transport on both ends, the deploy and ownership scripts,
 the unit files, and the userdb tooling. Examples of what is worth reporting:
 
 - a way to make the dashboard render attacker-controlled content as markup
@@ -50,6 +50,11 @@ vulnerability regardless of how it got there.
   Getting recorded text outside that fence is in scope. Persuading a model
   that reads the fenced text is the reader's risk to manage, and the fence
   reduces it without removing it.
+- In the intel team, the stage that reads recorded text has no tools, the
+  stage with web search is given no free text from it, and the account that
+  holds the repository token and the mail password runs no model. Getting
+  recorded text to a stage with a tool, or getting a file past the outbox
+  check to a path outside the allowed set, is in scope.
 - The dashboard opens the database read-only, through both a read-only URI
   and a query-only connection.
 - Everything the collector receives from the sensor is parsed as hostile

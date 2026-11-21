@@ -1,0 +1,52 @@
+[Unit]
+Description=Threat Radar intel team: refresh the knowledge base clone
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=radar-team-pub
+Group=radar-team-pub
+WorkingDirectory=/opt/threat-radar
+# The repository name and the mail addresses. No secrets.
+EnvironmentFile=/etc/threat-radar/team-pub.env
+# Root-owned files that only this account's units are handed.
+LoadCredential=github-token:/etc/threat-radar/team-pub/github-token
+LoadCredential=smtp-password:/etc/threat-radar/team-pub/smtp-password
+Environment=TR_APP=/opt/threat-radar
+Environment=TR_TEAM_STATE=/var/lib/radar-team
+Environment=TR_TEAM_PUB_STATE=/var/lib/radar-team-pub
+Environment=TR_TEAM_KB=/var/lib/radar-team-pub/kb
+Environment=HOME=/var/lib/radar-team-pub
+# The clone and the sent markers. Group-readable so the worker, which has
+# radar-team-pub as a supplementary group, can read the clone.
+StateDirectory=radar-team-pub
+StateDirectoryMode=0750
+ExecStart=/opt/threat-radar/venv/bin/python /opt/threat-radar/bin/team_publish.py sync
+TimeoutStartSec=600
+
+# Hardening. This unit reaches GitHub and nothing else.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+ProcSubset=pid
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0027

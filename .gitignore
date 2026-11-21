@@ -10,6 +10,7 @@ spool/
 *.db-shm
 *.db-wal
 venv/
+venv-team/
 __pycache__/
 *.pyc
 .backups/

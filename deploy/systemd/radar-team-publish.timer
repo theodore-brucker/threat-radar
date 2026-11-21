@@ -1,0 +1,10 @@
+[Unit]
+Description=Send the Threat Radar intel team report each morning
+
+[Timer]
+OnCalendar=*-*-* 06:30:00 America/New_York
+AccuracySec=1min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -21,6 +21,8 @@
      intel worker per-day rollups, lifetime tables, VirusTotal, URLhaus,
                   MalwareBazaar, capture provenance
      prune.py     age retention for raw events, storage warnings
+     intel team   a daily review by model stages, as two accounts: a worker
+                  that reads the day and a publisher that holds credentials
      FastAPI      read-only API and static SPA on the loopback interface
      nginx        private-network allow list and authentication
 ```
@@ -52,8 +54,16 @@ next deploy. Every unit is confined to the paths and network it needs: three
 have no network at all, and the dashboard is limited to the loopback
 interface nginx reaches it on.
 
-**Collector to internet.** Only the insights worker reaches out, for
-reputation lookups and submissions.
+**Collector to internet.** The insights worker reaches out for reputation
+lookups and submissions, the trends worker for its feeds, and the intel team
+for the model API, web search, the knowledge base repository and mail.
+
+**Inside the intel team.** The team reads a day of attacker text with a
+model, so it is split in two. The worker account reads the database and runs
+the stages, and its only credential is the model token. The publisher account
+holds the repository token and the mail password, runs no model, and accepts
+from the worker only files that pass a path, type, size and hash check.
+`docs/TEAM.md` describes what each stage can reach.
 
 **Viewer to dashboard.** The dashboard is reachable from private networks
 only, behind basic authentication. The application sets a content security
@@ -70,6 +80,7 @@ text rather than markup.
 | Crafted log content attacks the dashboard | values render as text, URL attributes are allow-listed, and the policy forbids inline script |
 | Published samples act as distribution | no endpoint returns sample bytes, and text samples are defanged |
 | Text typed into a session steers a model that is later handed an export | recorded data is fenced by a per-document nonce the session could not have known, non-printing characters are escaped, and the document says outside the fence that nothing inside is an instruction |
+| Text typed into a session steers a stage of the daily intel team | the stage that reads recorded text has no tools; each answer is checked against values the code already holds; the one stage with web search is given indicators and no free text; the account with credentials runs no model and renders model text only as escaped text |
 | Operator identity or persona detail leaks through the public repository | deployment-specific rules, addresses and persona files live outside it, in a private repository and in `/etc` |
 | A compromised package reaches the collector | dependencies install only from a lock with hashes |
 | A stage stops working without an error and the site keeps showing stale data | each stage leaves a heartbeat or a timestamp, and the pipeline status page lists the last time of each in Eastern time, including the newest login attempt and accepted login, so a stalled stage shows as an old time |
@@ -103,6 +114,10 @@ The table above is not a guarantee. These gaps are known and accepted for now.
   whatever the answer says. Upgrading the sensor to Cowrie 3.1.x removes all
   eight, and the `--ignore-vuln` list in `.github/workflows/ci.yml` should be
   deleted in the same change.
+- A stage of the intel team that has been steered can still write something
+  false into a report or a campaign page. Each claim carries its evidence,
+  and the knowledge base is a git repository, so a bad day can be read in the
+  diff and reverted.
 - The persona changed during the period the data covers, so figures either
   side of that boundary describe different hosts and should not be trended
   against each other.
