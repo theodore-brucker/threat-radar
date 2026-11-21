@@ -140,15 +140,17 @@ and add a line to `feedback.md`. A suggestion already in
 
 ## Setup on the collector
 
-These steps assume the collector is already running as `SETUP.md` describes,
-the `claude` CLI is installed at `/usr/local/bin/claude`, and the private
-knowledge base repository exists with at least one commit.
+These steps assume the collector is running as `SETUP.md` describes and has
+this version deployed (`sudo /opt/threat-radar/deploy/update.sh --config`,
+which also installs the team's units). They also assume the `claude` CLI is
+installed at `/usr/local/bin/claude`, and that the private knowledge base
+repository exists with at least one commit.
 
 1. Create the two accounts. Neither has a shell or a home directory.
 
    ```bash
-   sudo useradd --system --shell /usr/sbin/nologin --no-create-home radar-team
-   sudo useradd --system --shell /usr/sbin/nologin --no-create-home radar-team-pub
+   sudo useradd --system --user-group --shell /usr/sbin/nologin --no-create-home radar-team
+   sudo useradd --system --user-group --shell /usr/sbin/nologin --no-create-home radar-team-pub
    ```
 
 2. Create the worker's Python environment and install its lock.
@@ -198,10 +200,9 @@ knowledge base repository exists with at least one commit.
    TR_TEAM_MAIL_TO=<where the report goes>
    ```
 
-6. Install the units and clone the knowledge base.
+6. Clone the knowledge base.
 
    ```bash
-   sudo /opt/threat-radar/deploy/update.sh --config
    sudo systemctl start radar-team-sync; systemctl status radar-team-sync --no-pager -n 5
    ```
 

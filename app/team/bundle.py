@@ -339,6 +339,18 @@ def _exemplars(clusters, file_only):
         + ids[MAX_EXEMPLARS - 2:]
 
 
+def _file_summaries(con, shas, limits):
+    """What each new file is. The worker reads samples through a group, and
+    a file it cannot open must not cost the day's report."""
+    try:
+        return export.file_summaries(con, shas, limits)
+    except OSError as exc:
+        limits.append("File summaries: the sample files could not be read (%s), so "
+                      "the new files are described by their lookups only."
+                      % type(exc).__name__)
+        return export.file_summaries(con, [], limits)
+
+
 def _pipeline(con, hi):
     status = health.status(con)
     times = {i["key"]: i for i in status["items"]}
@@ -442,7 +454,7 @@ def build(con, day, known=None, watch=()):
               "Port-forwarding requests. The sensor records them and carries "
               "none of them out."),
         export.session_records(con, examples[:MAX_EXEMPLARS], limits, cap=MAX_EXEMPLARS),
-        export.file_summaries(con, [f["shasum"] for f in files if f["new_today"]], limits),
+        _file_summaries(con, [f["shasum"] for f in files if f["new_today"]], limits),
         facts("pipeline", "When the pipeline last ran", pipeline),
     ]
     if spike:

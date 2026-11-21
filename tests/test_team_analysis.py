@@ -135,6 +135,21 @@ class BundleTests(TeamCase):
         self.assertLess(len(cut), len(full))
         self.assertIn("were left out to keep this record", cut)
 
+    def test_an_unreadable_sample_is_a_limit_and_not_a_failure(self):
+        real = bundle.export.file_summaries
+
+        def denied(con, shas, limits):
+            if shas:
+                raise PermissionError("samples")
+            return real(con, shas, limits)
+        self.con.execute("UPDATE sample_provenance SET first_seen = ?",
+                         (clock.bounds(self.day)[0] + ".5Z",))
+        self.con.commit()
+        with mock.patch.object(bundle.export, "file_summaries", denied):
+            b = self.build()
+        self.assertTrue(any("could not be read (PermissionError)" in n for n in b["limits"]))
+        self.assertEqual(next(s for s in b["sections"] if s["kind"] == "samples")["data"], [])
+
     def test_configured_strings_are_withheld(self):
         with mock.patch.object(bundle.export, "REDACT", ["192.0.2.10"]):
             text, _ = bundle.document(self.build())
