@@ -7,7 +7,7 @@
      │  SSH to port 22, redirected to Cowrie on 2222
      ▼
   sensor (VPS)
-     Cowrie 3.0.14 with two local patches, running as its own account
+     Cowrie 3.0.14 with local patches, running as its own account
      nftables: honeypot account limited to DNS, NTP and web, no internal ranges
      userdb gate: refuses to start Cowrie on a userdb it cannot load
      forced-command wrapper: manifest, byte ranges, samples by sha256

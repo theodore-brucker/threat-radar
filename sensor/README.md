@@ -42,6 +42,23 @@ blocks the persona paths, so an overlaid checkout cannot commit them back here.
   read `/proc` itself), prints `free -m` and `free -h` in procps units, and
   makes `last` report wtmp beginning on the first of the month, the way a
   monthly logrotate leaves it.
+  `shell-arithmetic.patch` makes the shell evaluate `$((...))`. Cowrie
+  3.0.14 runs the text inside as a command and prints `command not found`,
+  which is the first thing a careful script checks. The evaluator is a new
+  file, `shell/arithmetic.py`, that tokenises the expression itself, wraps at
+  64 bits as bash does and bounds its own work.
+  `shell-parameters.patch` gives the shell `$$`, `$0`, `set --` and `shift`,
+  and makes `set -e` and the other option forms print nothing. `$$` is the
+  process id the `ps` command already prints for the login shell, and a
+  nested `sh` reports a different one.
+  `shell-printf.patch` makes `printf` format its arguments. Cowrie printed
+  nothing when a format had any. Field widths and total output are capped.
+  `shell-text-tools.patch` makes `grep` honour `-i`, `-v`, `-c` and `-q`,
+  which it accepted and ignored, and lets `head` and `tail` take `-5`.
+  `auth-implanted-keys.patch` remembers the public keys a session writes to
+  an `authorized_keys` file in a home directory and accepts a later login
+  that proves it holds the private half. See "Keys an intruder installs"
+  below.
 - `systemd/` holds the unit and its drop-in for `cowrie.service`. The drop-in
   stops Cowrie from starting with a userdb it cannot load, because Cowrie would
   otherwise start and reject every login without logging an error.
@@ -72,16 +89,67 @@ blocks the persona paths, so an overlaid checkout cannot commit them back here.
   `txtcmds_path` must be absolute; the shipped default resolves relative to
   WorkingDirectory and misses this tree.
 
-## Upgrading Cowrie
+## Upgrading Cowrie and installing patches
 
-`/opt/cowrie` is a git checkout of upstream with the two patches in
-`patches/` applied. `bin/upgrade-cowrie.sh TAG PATCH_DIR` moves it to another
-tag: it refuses if tracked files differ from upstream anywhere outside the
-patch set, or if the target adds a file that exists here untracked, and it
-proves the patches apply to the target before touching anything. It writes a
-tarball of everything except `var/` first, and rolling back is the same script
-with the previous tag. It does not restart Cowrie, so that you can restart it
-yourself and watch the log.
+`/opt/cowrie` is a git checkout of upstream with the patches in `patches/`
+applied. `bin/upgrade-cowrie.sh TAG PATCH_DIR` moves it to another tag. Run
+with the tag that is already checked out, it puts every patched file back as
+upstream has it and applies the whole set again, which is how a new or
+changed patch is installed. It reads the list of patched files from the
+patches. It refuses if tracked files differ from upstream anywhere outside
+that list, or if the target adds a file that exists here untracked, and it
+applies the patches to a scratch copy of the target before touching anything.
+It writes a tarball of everything except `var/` first, and rolling back is the
+same script with the previous tag or the previous patch directory. It does not
+restart Cowrie, so that you can restart it yourself and watch the log.
+
+The patches are independent. Each applies to the untouched release, and they
+apply in any order. `tests/test_sensor_patches.py` checks that on every push
+against the release pinned in `requirements-cowrie.txt`, and drives the
+patched shell to compare its answers with the ones bash gives.
+
+## Trying a command against the emulated shell
+
+`tools/sensor_shell.py` runs commands in the patched shell on any machine
+with the pinned Cowrie installed, without touching the sensor:
+
+```
+python -m pip install --require-hashes -r requirements-cowrie.txt
+python tools/sensor_shell.py 'echo $((2+3))' 'grep -ci root /etc/passwd'
+python tools/sensor_shell.py --unpatched 'echo $((2+3))'
+```
+
+It answers from the files Cowrie ships. Pass `--honeyfs` and `--txtcmds` to
+use a persona's files. Use it to check whether a command a session ran gave
+the emulator away, and to test a patch before it goes to the sensor.
+
+## Keys an intruder installs
+
+A common first move after a login is to append a public key to
+`~/.ssh/authorized_keys` and come back later with the private half. Each
+Cowrie session works on its own copy of the filesystem, so the file is gone
+when the session ends and the return visit used to fail at the door.
+
+With `auth-implanted-keys.patch`, a file written to
+`/root/.ssh/authorized_keys` or `/home/NAME/.ssh/authorized_keys` is read for
+public keys, at the end of the session for a shell redirect and at the end of
+the transfer for an SFTP upload. The SHA-256 of
+each key is appended to `var/lib/cowrie/implanted_keys` beside the account
+name. A later public-key login for that account with one of those keys is
+told the key is acceptable, must then sign the request as it would for sshd,
+and reaches the same emulated shell a password login reaches. Its
+`cowrie.login.success` event carries `implanted: true` and the key, and the
+daily review lists such sessions first.
+
+The file that is read was written by an attacker. At most 64 KiB of it is
+read, at most 16 keys are taken from it, and 2,000 keys are kept in all, the
+oldest dropped first. A key is parsed by Twisted's key reader and anything it
+rejects is skipped. A failure anywhere in the recording or the check leaves
+the login refused, which is what Cowrie does without the patch, so this path
+cannot stop password logins. Nothing an attacker sends is run. `[ssh]
+auth_publickey_implanted = false` in `cowrie.cfg` turns it off, and deleting
+the file forgets every key. Keys written by `scp`, `wget -O` or `cp` are not
+recorded.
 
 ## Ownership on the sensor
 

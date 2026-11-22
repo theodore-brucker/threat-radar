@@ -1,0 +1,278 @@
+diff --git a/src/cowrie/commands/base.py b/src/cowrie/commands/base.py
+index bea9ad9..e710b88 100644
+--- a/src/cowrie/commands/base.py
++++ b/src/cowrie/commands/base.py
+@@ -180,6 +180,17 @@ class Command_printf(HoneyPotCommand):
+     def call(self) -> None:
+         if not self.args:
+             self.write("printf: usage: printf [-v var] format [arguments]\n")
++        elif "-v" not in self.args and len(self.args) > 1:
++            # threat-radar patch: a format with arguments. The single
++            # argument form below is unchanged.
++            from cowrie.shell import printf
++
++            data, problems = printf.render(self.args[0], self.args[1:])
++            self.writeBytes(data)
++            for problem in problems:
++                self.errorWrite(f"-bash: {problem}\n")
++            if problems:
++                self.exit_code = 1
+         else:
+             if "-v" not in self.args and len(self.args) < 2:
+                 # replace r'\\x' with r'\x'
+diff --git a/src/cowrie/shell/printf.py b/src/cowrie/shell/printf.py
+new file mode 100644
+index 0000000..50f68ef
+--- /dev/null
++++ b/src/cowrie/shell/printf.py
+@@ -0,0 +1,250 @@
++# threat-radar patch: the formatting half of the printf builtin.
++#
++# The format and its arguments are attacker input. Field widths, precisions
++# and the total output are capped, so a format such as %999999999d costs a
++# few kilobytes and no more.
++
++"""
++Format ``printf FORMAT ARGUMENT...`` the way bash does.
++
++The format is reused until the arguments run out. A missing argument reads as
++an empty string or as zero. An argument that is not a number prints as zero
++and is reported, as bash reports it.
++"""
++
++from __future__ import annotations
++
++import re
++
++# The widest field and the largest output one call may produce.
++MAX_FIELD = 1024
++MAX_OUTPUT = 262144
++
++_SPEC = re.compile(
++    r"%(?P<flags>[-+ #0]*)(?P<width>\*|\d+)?(?:\.(?P<precision>\*|\d*))?"
++    r"(?P<kind>[diouxXcsbqeEfFgGaA])"
++)
++_SPEC_PREFIX = re.compile(r"%[-+ #0]*(?:\*|\d+)?(?:\.(?:\*|\d*))?")
++_SIMPLE = {
++    "\\": b"\\",
++    "a": b"\a",
++    "b": b"\b",
++    "e": b"\x1b",
++    "E": b"\x1b",
++    "f": b"\f",
++    "n": b"\n",
++    "r": b"\r",
++    "t": b"\t",
++    "v": b"\v",
++    '"': b'"',
++    "'": b"'",
++    "?": b"?",
++}
++_OCTAL = re.compile(r"[0-7]{1,3}")
++_OCTAL_B = re.compile(r"0[0-7]{0,3}|[0-7]{1,3}")
++_HEX = re.compile(r"[0-9A-Fa-f]{1,2}")
++_UNICODE4 = re.compile(r"[0-9A-Fa-f]{1,4}")
++_UNICODE8 = re.compile(r"[0-9A-Fa-f]{1,8}")
++_INTEGER = re.compile(
++    r"\s*(?P<sign>[+-]?)"
++    r"(?:0[xX](?P<hex>[0-9A-Fa-f]*)|0(?P<octal>[0-7]*)|(?P<decimal>[0-9]*))"
++)
++_FLOAT = re.compile(r"\s*[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
++_UNSIGNED = 1 << 64
++
++
++def unescape(text: str, argument: bool = False) -> tuple[bytes, bool]:
++    """Expand backslash escapes. Returns the bytes and whether output ends
++    here. ``argument`` selects the rules of ``%b``, where an octal escape may
++    carry a leading zero and ``\\c`` ends all output."""
++    out = bytearray()
++    position = 0
++    while position < len(text):
++        character = text[position]
++        if character != "\\" or position + 1 == len(text):
++            out += character.encode("utf-8", "replace")
++            position += 1
++            continue
++        following = text[position + 1]
++        position += 2
++        if following == "c" and argument:
++            return bytes(out), True
++        if following in _SIMPLE:
++            out += _SIMPLE[following]
++            continue
++        if following == "x":
++            match = _HEX.match(text, position)
++            if match is None:
++                out += b"\\x"
++                continue
++            out.append(int(match.group(), 16))
++            position = match.end()
++            continue
++        if following in "uU":
++            match = (_UNICODE4 if following == "u" else _UNICODE8).match(text, position)
++            if match is not None and int(match.group(), 16) < 0x110000:
++                out += chr(int(match.group(), 16)).encode("utf-8", "replace")
++                position = match.end()
++                continue
++        match = (_OCTAL_B if argument else _OCTAL).match(text, position - 1)
++        if match is not None:
++            out.append(int(match.group(), 8) & 0xFF)
++            position = match.end()
++            continue
++        out += b"\\" + following.encode("utf-8", "replace")
++    return bytes(out), False
++
++
++class _Arguments:
++    def __init__(self, values: list[str]) -> None:
++        self.values = values
++        self.used = 0
++        self.errors: list[str] = []
++
++    def take(self) -> str | None:
++        if self.used >= len(self.values):
++            return None
++        self.used += 1
++        return self.values[self.used - 1]
++
++    def integer(self) -> int:
++        """Read an argument the way strtol does: optional space and sign,
++        then hexadecimal after ``0x``, octal after ``0``, or decimal. Digits
++        are read as far as they go and anything left over is reported."""
++        text = self.take()
++        if not text:
++            return 0
++        if text[0] in ("'", '"'):
++            # A leading quote asks for the character code of what follows.
++            return ord(text[1]) if len(text) > 1 else 0
++        match = _INTEGER.match(text)
++        assert match is not None  # every group is optional
++        sign = -1 if match.group("sign") == "-" else 1
++        if match.group("hex") is not None:
++            digits, base, name = match.group("hex"), 16, "invalid hex number"
++        elif match.group("octal") is not None:
++            digits, base, name = match.group("octal"), 8, "invalid octal number"
++        else:
++            digits, base, name = match.group("decimal"), 10, "invalid number"
++        if not digits or match.end() != len(text):
++            self.errors.append(f"printf: {text}: {name}")
++        return sign * int(digits, base) if digits else 0
++
++    def real(self) -> float:
++        text = self.take()
++        if text is None:
++            return 0.0
++        if not text:
++            return 0.0
++        match = _FLOAT.match(text)
++        if match is None or match.end() != len(text):
++            self.errors.append(f"printf: {text}: invalid number")
++        try:
++            return float(match.group()) if match else 0.0
++        except (ValueError, OverflowError):
++            return 0.0
++
++    def size(self) -> int:
++        """A width or precision given as ``*``."""
++        return max(-MAX_FIELD, min(MAX_FIELD, self.integer()))
++
++
++def _field(match: re.Match[str], arguments: _Arguments) -> tuple[bytes, bool]:
++    kind = match.group("kind")
++    flags = "".join(dict.fromkeys(match.group("flags")))
++    width_text, precision_text = match.group("width"), match.group("precision")
++    width = ""
++    if width_text == "*":
++        size = arguments.size()
++        if size < 0:
++            flags += "-"
++        width = str(abs(size))
++    elif width_text:
++        width = str(min(int(width_text), MAX_FIELD))
++    precision = ""
++    if precision_text == "*":
++        size = arguments.size()
++        precision = f".{size}" if size >= 0 else ""
++    elif precision_text is not None:
++        precision = f".{min(int(precision_text or 0), MAX_FIELD)}"
++    spec = f"%{flags}{width}{precision}"
++
++    if kind in "sqb":
++        text = arguments.take() or ""
++        if kind != "b":
++            return (spec + "s").encode() % (text.encode("utf-8", "replace"),), False
++        data, stop = unescape(text, argument=True)
++        return (spec + "s").encode() % (data,), stop
++    if kind == "c":
++        # An empty or missing argument prints a NUL, as C's %c does with zero.
++        first = (arguments.take() or "\0")[:1].encode("utf-8", "replace")
++        return (f"%{flags.replace('#', '').replace('0', '')}{width}s").encode() % (
++            first,
++        ), False
++    if kind in "di":
++        return (spec + "d").replace("#", "").encode() % (
++            _signed(arguments.integer()),
++        ), False
++    if kind in "uoxX":
++        value = arguments.integer() % _UNSIGNED
++        if kind == "u":
++            return (spec.replace("#", "") + "d").encode() % (value,), False
++        if kind == "o" and "#" in flags:
++            # C writes the alternate octal form with a single leading zero.
++            body = b"%o" % (value,)
++            body = body if value == 0 else b"0" + body
++            return (f"%{flags.replace('#', '').replace('0', '')}{width}s").encode() % (
++                body,
++            ), False
++        return (spec + kind).encode() % (value,), False
++    value = arguments.real()
++    if kind in "aA":
++        body = value.hex() if kind == "a" else value.hex().upper()
++        return body.encode(), False
++    return (spec + kind).encode() % (value,), False
++
++
++def _signed(value: int) -> int:
++    value %= _UNSIGNED
++    return value - _UNSIGNED if value >> 63 else value
++
++
++def render(template: str, values: list[str]) -> tuple[bytes, list[str]]:
++    """Return the output of ``printf template values...`` and the messages
++    bash would write to standard error."""
++    arguments = _Arguments(values)
++    out = bytearray()
++    while True:
++        before = arguments.used
++        position = 0
++        stopped = False
++        while position < len(template) and not stopped:
++            percent = template.find("%", position)
++            literal = template[position:] if percent < 0 else template[position:percent]
++            data, stopped = unescape(literal)
++            out += data
++            if percent < 0 or stopped:
++                break
++            if template.startswith("%%", percent):
++                out += b"%"
++                position = percent + 2
++                continue
++            match = _SPEC.match(template, percent)
++            if match is None:
++                bad = _SPEC_PREFIX.match(template, percent).end()
++                if bad == len(template):
++                    problem = "`%': missing format character"
++                else:
++                    problem = f"`{template[bad]}': invalid format character"
++                arguments.errors.append(f"printf: {problem}")
++                return bytes(out), arguments.errors
++            data, stopped = _field(match, arguments)
++            out += data
++            position = match.end()
++        if (
++            stopped
++            or arguments.used >= len(values)
++            or arguments.used == before
++            or len(out) > MAX_OUTPUT
++        ):
++            return bytes(out[:MAX_OUTPUT]), arguments.errors

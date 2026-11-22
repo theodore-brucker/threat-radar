@@ -33,12 +33,16 @@ BASELINE_DAYS = 14          # days of history a day is compared with, at most
 MAX_COMMAND_EVENTS = 50000  # command events read for one day
 MAX_CLUSTERS = 15           # command clusters listed
 MAX_EXEMPLARS = 8           # sessions expanded into a full event record
+MAX_RELAY_ROWS = 40         # pairs of relay source and destination listed
+MAX_KEY_RETURNS = 20        # logins with an installed key listed
 MAX_DOCUMENT_CHARS = 160000  # size of the document the reader is shown
 
 METRICS = ("events", "addresses", "sessions", "logins", "successes",
            "commands", "downloads", "uploads", "tunnels")
 COMMAND_EVENTS = ("cowrie.command.input", "cowrie.command.failed")
 CONNECT_EVENT = "cowrie.session.connect"
+LOGIN_EVENT = "cowrie.login.success"
+RELAY_EVENT = "cowrie.direct-tcpip.request"
 
 FUNNEL = [
     ("connected", "Sessions"),
@@ -221,6 +225,51 @@ def _tunnels(con, day):
     return rows
 
 
+def _relay_by_source(con, lo, hi, networks_of, limits):
+    """Who asked the sensor to connect where. The per-day table above counts
+    each destination once, which hides that one source walked a list of them."""
+    rows = db.qall(con, """
+        SELECT src_ip, json_extract(payload, '$.dst_ip') dst_ip,
+               json_extract(payload, '$.dst_port') dst_port, COUNT(*) requests,
+               COUNT(DISTINCT session) sessions, MIN(ts) first_request,
+               MAX(ts) last_request
+          FROM v_events WHERE eventid = ? AND ts >= ? AND ts < ?
+         GROUP BY src_ip, dst_ip, dst_port
+         ORDER BY requests DESC, src_ip, dst_ip, dst_port LIMIT ?""",
+                   (RELAY_EVENT, lo, hi, MAX_RELAY_ROWS + 1))
+    if len(rows) > MAX_RELAY_ROWS:
+        rows = rows[:MAX_RELAY_ROWS]
+        limits.append("Relay requests by source: the %d busiest pairs of source "
+                      "and destination are listed, and there were more."
+                      % MAX_RELAY_ROWS)
+    for r in rows:
+        r["network"] = networks_of.get(r["src_ip"]) or ""
+        r["service"], _ = tunnels.port_intent(_port(r["dst_port"]))
+    return rows
+
+
+def _port(value):
+    """A requested port as a number. The field is whatever the client sent."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _key_returns(con, lo, hi):
+    """Logins made with a key that an earlier session wrote to an
+    authorized_keys file. The sensor marks them, and each one is a visitor
+    coming back to what they believe is their own foothold."""
+    return db.qall(con, """
+        SELECT session, src_ip, ts, json_extract(payload, '$.username') username,
+               json_extract(payload, '$.type') key_type,
+               json_extract(payload, '$.fingerprint') key_fingerprint
+          FROM v_events
+         WHERE eventid = ? AND json_extract(payload, '$.implanted') = 1
+           AND ts >= ? AND ts < ?
+         ORDER BY ts, id LIMIT ?""", (LOGIN_EVENT, lo, hi, MAX_KEY_RETURNS))
+
+
 def _files(con, day, lo, hi):
     rows = db.qall(con, """
         SELECT p.shasum, p.direction, p.url, p.host, p.filename, p.hits,
@@ -386,12 +435,14 @@ def build(con, day, known=None, watch=()):
     top, accepted, new_pairs, new_total, themes = _credentials(con, day, lo, hi)
     clients = _clients(con, first, day)
     relay = _tunnels(con, day)
+    returns = _key_returns(con, lo, hi)
     files = _files(con, day, lo, hi)
     furthest = _furthest(con, day)
     meta = _session_meta(con, day)
     networks_of = {r["src_ip"]: r["asn"] for r in db.qall(
         con, "SELECT src_ip, asn FROM asn_ip_daily WHERE day = ?", (day,))}
     clusters = _clusters(con, lo, hi, meta, networks_of, known, watch, limits)
+    relay_sources = _relay_by_source(con, lo, hi, networks_of, limits)
     file_only = _file_only_sessions(con, day)
     pipeline = _pipeline(con, hi)
     spike = db.qone(con, "SELECT events, baseline, ratio, headline FROM spike_annotations "
@@ -411,7 +462,10 @@ def build(con, day, known=None, watch=()):
                          2: "Only two earlier days are"}[metrics["sessions"]["days"]])
 
     shown = clusters[:MAX_CLUSTERS]
-    examples = _exemplars(shown, file_only)
+    # A return visit is rarer than anything a cluster holds, so it is
+    # expanded before the cluster examples.
+    examples = list(dict.fromkeys([r["session"] for r in returns]
+                                  + _exemplars(shown, file_only)))
     if len(examples) > MAX_EXEMPLARS:
         limits.append("Session records: %d of %d example sessions are expanded, those "
                       "that touched a watched path or moved a file first."
@@ -433,7 +487,9 @@ def build(con, day, known=None, watch=()):
               "earlier comparable days, and is empty when there are none."),
         table(limits, "countries", "Countries", _countries(con, day)),
         table(limits, "credentials", "Credential pairs tried most", top),
-        table(limits, "accepted", "Credential pairs the sensor accepted", accepted),
+        table(limits, "accepted", "Credential pairs the sensor accepted", accepted,
+              "A row with an empty password counts public-key logins, which "
+              "carry no password. They are listed further down."),
         table(limits, "new_pairs", "Credential pairs first seen this day", new_pairs,
               "%d pairs were new this day. The most tried are listed." % new_total),
         table(limits, "themes", "Credential themes", themes,
@@ -453,6 +509,16 @@ def build(con, day, known=None, watch=()):
         table(limits, "relay", "Relay requests", relay,
               "Port-forwarding requests. The sensor records them and carries "
               "none of them out."),
+        table(limits, "relay_sources", "Relay requests by source", relay_sources,
+              "One row for each source and the destination it asked for. A "
+              "destination is what the requester wanted to reach through the "
+              "sensor, so it is a target or a test endpoint and not attacker "
+              "infrastructure."),
+        table(limits, "key_returns", "Logins with a key an earlier session installed",
+              returns,
+              "A session wrote this public key to an authorized_keys file, and "
+              "this login proved it holds the private half. The sessions are "
+              "expanded below."),
         export.session_records(con, examples[:MAX_EXEMPLARS], limits, cap=MAX_EXEMPLARS),
         _file_summaries(con, [f["shasum"] for f in files if f["new_today"]], limits),
         facts("pipeline", "When the pipeline last ran", pipeline),
@@ -463,7 +529,8 @@ def build(con, day, known=None, watch=()):
     indicators = {
         "ip": sorted({r["src_ip"] for r in furthest}
                      | {ip for c in shown for ip in c["ips"][:5]}
-                     | {s["src_ip"] for s in file_only}),
+                     | {s["src_ip"] for s in file_only}
+                     | {r["src_ip"] for r in returns}),
         "sha256": sorted({f["shasum"] for f in files}),
         "host": sorted({f["host"] for f in files if f["host"]}),
         "family": sorted({f["family"] for f in files if f["family"]}),

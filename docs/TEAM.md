@@ -31,6 +31,14 @@ of what they typed: the command sequence with addresses, URLs and long
 numbers removed, hashed. A shape is how the knowledge base recognises a
 script on a later day, whatever address it comes from.
 
+Two tables come straight from the day's raw events. Relay requests are listed
+by source, one row for each destination a source asked the sensor to reach,
+because the per-day totals show the destinations and hide who walked the
+list. A destination is somebody's target, so it is never offered to the
+research stage as an indicator. Logins made with a key an earlier session
+installed (see `sensor/README.md`) are listed with their key, and those
+sessions are expanded before any cluster's example.
+
 Each count is compared with its median over the earlier days of the current
 persona, 14 at most, and never across a persona change or a cutover. A
 comparison with fewer than three days behind it is reported as having no

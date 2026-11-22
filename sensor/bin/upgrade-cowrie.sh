@@ -2,8 +2,10 @@
 # Move a Cowrie checkout to another upstream tag and re-apply the local patches.
 #   sudo /opt/cowrie/bin/upgrade-cowrie.sh TAG PATCH_DIR [--dry-run]
 #
-# /opt/cowrie is a git checkout of upstream with two local patches applied to
-# its source. The persona lives in untracked directories and in files upstream
+# /opt/cowrie is a git checkout of upstream with the local patches applied to
+# its source. Running this with the tag already checked out re-applies the
+# patch set, which is how a new or changed patch is installed. The persona
+# lives in untracked directories and in files upstream
 # does not change between patch releases, so a checkout carries it across;
 # this script refuses to continue if that stops being true. It does not restart
 # Cowrie, because the restart is the step that needs watching.
@@ -17,7 +19,6 @@ TAG="${1:?usage: upgrade-cowrie.sh TAG PATCH_DIR [--dry-run]}"
 PATCHES="${2:?usage: upgrade-cowrie.sh TAG PATCH_DIR [--dry-run]}"
 DRY=0
 [ "${3:-}" = "--dry-run" ] && DRY=1
-PATCHED=(src/cowrie/commands/lspci.py src/cowrie/ssh/factory.py)
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root"; exit 1; }
 cd "$COWRIE_HOME"
@@ -32,11 +33,15 @@ echo "    at $current, moving to $TAG"
 git fetch --tags --quiet origin
 git rev-parse --verify --quiet "refs/tags/$TAG" >/dev/null || { echo "no such tag: $TAG"; exit 1; }
 
+# The files the patches change or create, read from the patches themselves.
+mapfile -t PATCHED < <(git apply --numstat "${patch_files[@]}" | cut -f3 | sort -u)
+[ "${#PATCHED[@]}" -gt 0 ] || { echo "the patches name no files"; exit 1; }
+
 # The only tracked files allowed to differ from upstream are the patched ones.
 mapfile -t modified < <(git status --porcelain --untracked-files=no | awk '{print $2}')
 unexpected=()
 for f in "${modified[@]}"; do
-  [ "$f" = "${PATCHED[0]}" ] || [ "$f" = "${PATCHED[1]}" ] || unexpected+=("$f")
+  printf '%s\n' "${PATCHED[@]}" | grep -qxF -- "$f" || unexpected+=("$f")
 done
 if [ "${#unexpected[@]}" -gt 0 ]; then
   echo "    tracked files changed outside the patch set, refusing:"
@@ -58,11 +63,13 @@ if [ "${#collide[@]}" -gt 0 ]; then
   exit 1
 fi
 
-# Prove the patches apply to the target before touching anything.
+# Prove the patches apply to the target before touching anything, by applying
+# them to a scratch copy of it. Several patches change the same file, and only
+# a real apply shows that they still fit one after another.
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
 git worktree add --quiet --detach "$scratch/tree" "$TAG"
-( cd "$scratch/tree" && git apply --check "${patch_files[@]}" ) \
+( cd "$scratch/tree" && git apply "${patch_files[@]}" ) \
   || { git worktree remove --force "$scratch/tree"; echo "    patches do not apply to $TAG"; exit 1; }
 git worktree remove --force "$scratch/tree"
 echo "    patches apply cleanly to $TAG"
@@ -78,7 +85,15 @@ tar czf "$backup" --exclude=./var -C "$COWRIE_HOME" .
 echo "    $backup"
 
 echo "==> upgrade"
-git checkout --quiet -- "${PATCHED[@]}"
+# Put every patched file back as upstream has it. A file a patch created is
+# not in upstream, so it is removed and the patch creates it again.
+for f in "${PATCHED[@]}"; do
+  if git ls-files --error-unmatch -- "$f" >/dev/null 2>&1; then
+    git checkout --quiet -- "$f"
+  else
+    rm -f -- "$f"
+  fi
+done
 find src \( -name '*.orig.*' -o -name '*.bak.*' -o -name '*.rej' \) -delete
 git checkout --quiet "$TAG"
 git apply "${patch_files[@]}"

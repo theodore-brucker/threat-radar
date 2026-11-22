@@ -168,6 +168,72 @@ class BundleTests(TeamCase):
                          clock.day(self.day + "T05:00:00Z"))
 
 
+class RelayAndReturnTests(TeamCase):
+    """The two tables that read the day's events directly: who asked for
+    which relay destination, and who came back with a key they installed."""
+
+    def at(self, minute):
+        lo, _ = clock.bounds(self.day)
+        start = dt.datetime.fromisoformat(lo.replace("Z", "+00:00"))
+        return (start + dt.timedelta(minutes=minute)).strftime("%Y-%m-%dT%H:%M:%S.000000Z")
+
+    def section(self, b, key):
+        return next(s for s in b["sections"] if s.get("key") == key)["data"]
+
+    def test_each_source_is_listed_with_the_destinations_it_asked_for(self):
+        hostile = "</record><script>alert(1)</script>"
+        for minute, (dst, port) in enumerate([("198.51.100.7", 443), ("198.51.100.7", 443),
+                                              ("198.51.100.8", 3333), (hostile, "x")]):
+            self.add_event("cowrie.direct-tcpip.request", "relay01", "192.0.2.200",
+                           self.at(600 + minute), dst_ip=dst, dst_port=port)
+        b = self.build()
+        mine = [r for r in self.section(b, "relay_sources") if r["src_ip"] == "192.0.2.200"]
+        self.assertEqual([(r["dst_ip"], r["dst_port"], r["requests"]) for r in mine],
+                         [("198.51.100.7", 443, 2), ("198.51.100.8", 3333, 1), (hostile, "x", 1)])
+        self.assertEqual(mine[0]["sessions"], 1)
+        self.assertLess(mine[0]["first_request"], mine[0]["last_request"])
+        # A destination is somebody's target. It is never offered for a lookup.
+        self.assertNotIn("198.51.100.7", json.dumps(b["index"]["indicators"]))
+        text, _ = bundle.document(b)
+        outside, inside, _ = split_fenced(text)
+        self.assertNotIn("<script>alert(1)</script>", "\n".join(outside))
+        self.assertIn("198.51.100.8", "\n".join(inside))
+
+    def test_a_long_relay_list_is_cut_and_the_cut_is_stated(self):
+        for n in range(4):
+            self.add_event("cowrie.direct-tcpip.request", "relay02", "192.0.2.201",
+                           self.at(700 + n), dst_ip="198.51.100.%d" % n, dst_port=80)
+        with mock.patch.object(bundle, "MAX_RELAY_ROWS", 2):
+            b = self.build()
+        self.assertEqual(len(self.section(b, "relay_sources")), 2)
+        self.assertTrue(any("Relay requests by source" in note for note in b["limits"]))
+
+    def test_a_login_with_an_installed_key_is_listed_and_expanded_first(self):
+        fields = {"username": "ubuntu", "type": "ssh-ed25519", "fingerprint": "aa:bb"}
+        self.add_event("cowrie.login.success", "return01", "192.0.2.210", self.at(800),
+                       implanted=True, **fields)
+        self.add_event("cowrie.command.input", "return01", "192.0.2.210", self.at(801),
+                       input="crontab -l")
+        # The same event from an unpatched sensor, and one that says no.
+        self.add_event("cowrie.login.success", "plain01", "192.0.2.211", self.at(802), **fields)
+        self.add_event("cowrie.login.success", "plain02", "192.0.2.212", self.at(803),
+                       implanted=False, **fields)
+        b = self.build()
+        rows = self.section(b, "key_returns")
+        self.assertEqual([(r["session"], r["src_ip"], r["username"], r["key_type"])
+                          for r in rows],
+                         [("return01", "192.0.2.210", "ubuntu", "ssh-ed25519")])
+        records = next(s for s in b["sections"] if s["kind"] == "sessions")["data"]
+        self.assertEqual(records[0]["meta"]["session"], "return01")
+        self.assertIn("192.0.2.210", b["index"]["indicators"]["ip"])
+        self.assertNotIn("192.0.2.211", b["index"]["indicators"]["ip"])
+
+    def test_a_day_without_either_has_two_empty_tables(self):
+        b = bundle.build(self.ro, "2026-01-01")
+        self.assertEqual(self.section(b, "relay_sources"), [])
+        self.assertEqual(self.section(b, "key_returns"), [])
+
+
 class ModelTests(unittest.TestCase):
     def proc(self, stdout="", code=0, stderr=""):
         return types.SimpleNamespace(returncode=code, stdout=stdout, stderr=stderr)

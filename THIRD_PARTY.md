@@ -49,6 +49,6 @@ here before relying on this notice: TODO, upstream source and licence.
 ## Cowrie
 
 The sensor runs Cowrie, which is not vendored here. `sensor/patches/` holds
-small local modifications to Cowrie source as patch files. Cowrie is
+local modifications to Cowrie source as patch files. Cowrie is
 distributed under a BSD 3-clause licence by its own authors, and the patches
 are intended to be applied to a checkout obtained from upstream.
