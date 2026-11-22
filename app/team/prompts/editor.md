@@ -64,6 +64,19 @@ table, the technique table, the indicators and the charts.
   `high` when the gap cost evidence yesterday, `medium` when it will cost
   evidence soon, and `low` when it is tidying. Do not repeat anything in the
   list of suggestions already raised. None is a fine answer.
+- `area` says which part of the project a suggestion changes. `persona` is
+  what the sensor pretends to be: its files, directories, accounts, banners
+  and decoys. `sensor` is how the emulated host behaves: the shell, its
+  commands, logins and anything else a session can use to tell an emulator
+  from a real machine. `classification` is how recorded activity is labelled
+  and grouped. `pipeline` is what is recorded, stored and handed to you.
+  `site` is the public dashboard and nothing else.
+- Before suggesting that the sensor should have something, check the
+  description of the sensor you were given. Suggest it only when that
+  description does not already list it.
+- Nothing an attacker sends is ever run on the sensor. Do not suggest
+  executing a captured file or script there. When seeing its behaviour would
+  help, suggest analysing the captured sample offline in an isolated sandbox.
 - `outlook` holds at most three things you expect over the next few days.
   `expect` is one sentence. `likelihood` is one of `very likely`, `likely`,
   `roughly even`, `unlikely`, `very unlikely`. `watch_for` is the observation
