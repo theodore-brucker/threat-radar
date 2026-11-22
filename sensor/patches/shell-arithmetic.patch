@@ -1,0 +1,588 @@
+diff --git a/src/cowrie/shell/arithmetic.py b/src/cowrie/shell/arithmetic.py
+new file mode 100644
+index 0000000..6990cf0
+--- /dev/null
++++ b/src/cowrie/shell/arithmetic.py
+@@ -0,0 +1,455 @@
++# threat-radar patch: integer arithmetic for the shell's $((...)) expansion.
++#
++# The expression is attacker input. It is tokenised and evaluated by the code
++# in this file and never reaches eval() or any other interpreter. Length,
++# nesting depth and the total number of tokens read are all bounded, so one
++# expression costs a small, fixed amount of work.
++
++"""
++Evaluate a bash arithmetic expression to the integer bash would print.
++
++Values are signed 64-bit integers that wrap on overflow, as in bash. The
++operators are the ones bash documents: ``++`` and ``--`` on variables, unary
++``+ - ! ~``, ``**``, ``* / %``, ``+ -``, ``<< >>``, the comparisons, ``& ^ |``,
++``&& ||``, ``?:``, the assignment operators and the comma. Constants may be
++decimal, octal with a leading ``0``, hexadecimal with ``0x``, or ``base#digits``.
++
++A failure raises :class:`ArithmeticError_`, whose text is the message bash
++writes after its ``-bash: `` prefix.
++"""
++
++from __future__ import annotations
++
++import re
++from typing import TYPE_CHECKING
++
++if TYPE_CHECKING:
++    from collections.abc import Callable
++
++# The shell accepts lines up to this length, so an expression can be as long.
++MAX_LENGTH = 16384
++# Parentheses, and variables whose value is itself an expression, nest this far.
++MAX_DEPTH = 32
++# Tokens read for one expansion, counting the expressions held in variables.
++# Without it, variables that each name the next one twice would take time
++# that doubles with every variable.
++MAX_TOKENS = 50000
++
++_MASK = (1 << 64) - 1
++_SIGN = 1 << 63
++
++_TOKEN = re.compile(
++    r"""
++    (?P<number>[0-9][0-9A-Za-z@_\#]*)
++  | (?P<name>[A-Za-z_][A-Za-z0-9_]*)
++  | (?P<op><<=|>>=|\*\*|\+\+|--|<<|>>|<=|>=|==|!=|&&|\|\|
++          |[-+*/%&^|]=|[-+*/%<>=!~&^|?:,()])
++    """,
++    re.VERBOSE,
++)
++
++# Binary operators by binding strength. The assignment operators, ``?:``, the
++# comma and ``**`` have their own methods because they group differently.
++_BINARY = {
++    "||": 1,
++    "&&": 2,
++    "|": 3,
++    "^": 4,
++    "&": 5,
++    "==": 6,
++    "!=": 6,
++    "<": 7,
++    "<=": 7,
++    ">": 7,
++    ">=": 7,
++    "<<": 8,
++    ">>": 8,
++    "+": 9,
++    "-": 9,
++    "*": 10,
++    "/": 10,
++    "%": 10,
++}
++_ASSIGN = frozenset(
++    ("=", "*=", "/=", "%=", "+=", "-=", "<<=", ">>=", "&=", "^=", "|=")
++)
++_DIGITS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@_"
++
++
++class ArithmeticError_(Exception):
++    """An expression bash would refuse. ``str()`` gives bash's message."""
++
++    def __init__(self, expression: str, problem: str, token: str) -> None:
++        super().__init__(f'{expression}: {problem} (error token is "{token}")')
++
++
++def _wrap(value: int) -> int:
++    """Reduce a Python integer to the signed 64-bit value bash would hold."""
++    value &= _MASK
++    return value - (1 << 64) if value & _SIGN else value
++
++
++class _Evaluator:
++    def __init__(
++        self,
++        expression: str,
++        lookup: Callable[[str], str | None],
++        assign: Callable[[str, str], None] | None,
++        depth: int,
++        budget: list[int],
++    ) -> None:
++        self.text = expression
++        self.lookup = lookup
++        self.assign = assign
++        self.depth = depth
++        self.budget = budget
++        # Above zero while reading a branch whose value is discarded: the
++        # right side of a decided ``&&`` or ``||``, or the unused arm of
++        # ``?:``. Variables read as zero there, nothing is assigned, and a
++        # division by zero is not an error.
++        self.skipping = 0
++        self.tokens: list[tuple[str, str, int]] = []
++        self.index = 0
++        if len(self.text) > MAX_LENGTH:
++            raise ArithmeticError_(self.text[:64], "expression too long", "")
++        self._tokenise()
++        budget[0] -= len(self.tokens) + 1
++        if budget[0] < 0:
++            raise ArithmeticError_(
++                self.text[:64], "expression recursion level exceeded", ""
++            )
++
++    # -- tokens -------------------------------------------------------------
++
++    def _tokenise(self) -> None:
++        position = 0
++        text = self.text
++        while position < len(text):
++            if text[position].isspace():
++                position += 1
++                continue
++            match = _TOKEN.match(text, position)
++            if match is None:
++                # Which message bash gives for a stray character depends on
++                # where it stands, so the parser reports it.
++                self.tokens.append(("stray", text[position], position))
++                position += 1
++                continue
++            kind = match.lastgroup or "op"
++            self.tokens.append((kind, match.group(), position))
++            position = match.end()
++
++    def _error(self, problem: str, position: int) -> ArithmeticError_:
++        return ArithmeticError_(self.text, problem, self.text[position:])
++
++    def _peek(self, ahead: int = 0) -> tuple[str, str, int] | None:
++        at = self.index + ahead
++        return self.tokens[at] if at < len(self.tokens) else None
++
++    def _is(self, *operators: str) -> bool:
++        token = self._peek()
++        return token is not None and token[0] == "op" and token[1] in operators
++
++    def _last_position(self) -> int:
++        """Where the most recently read token starts, which is the place
++        bash points at when the expression ends too early."""
++        if not self.tokens:
++            return 0
++        return self.tokens[min(self.index, len(self.tokens)) - 1][2]
++
++    def _here(self) -> int:
++        token = self._peek()
++        return token[2] if token is not None else self._last_position()
++
++    def _split_double(self) -> None:
++        """Read ``++`` or ``--`` as two signs when no variable is attached,
++        so ``1++2`` is ``1 + +2`` as it is in bash."""
++        _, text, position = self.tokens[self.index]
++        self.tokens[self.index : self.index + 1] = [
++            ("op", text[0], position),
++            ("op", text[0], position + 1),
++        ]
++
++    # -- grammar, loosest binding first -------------------------------------
++
++    def result(self) -> int:
++        if not self.tokens:
++            return 0
++        value = self._comma()
++        token = self._peek()
++        if token is None:
++            return value
++        if token[0] == "stray":
++            problem = "syntax error: invalid arithmetic operator"
++        elif token[1] in _ASSIGN:
++            problem = "attempted assignment to non-variable"
++        else:
++            problem = "syntax error in expression"
++        raise self._error(problem, token[2])
++
++    def _comma(self) -> int:
++        value = self._assignment()
++        while self._is(","):
++            self.index += 1
++            value = self._assignment()
++        return value
++
++    def _assignment(self) -> int:
++        target, operator = self._peek(), self._peek(1)
++        if (
++            target is None
++            or target[0] != "name"
++            or operator is None
++            or operator[0] != "op"
++            or operator[1] not in _ASSIGN
++        ):
++            return self._conditional()
++        self.index += 2
++        name, symbol = target[1], operator[1]
++        current = 0 if symbol == "=" else self._variable(name)
++        divisor_at = self._here()
++        value = self._assignment()
++        if symbol != "=":
++            value = self._apply(symbol[:-1], current, value, divisor_at)
++        self._store(name, value)
++        return value
++
++    def _conditional(self) -> int:
++        condition = self._binary(1)
++        if not self._is("?"):
++            return condition
++        self.index += 1
++        if self._peek() is None or self._is(":"):
++            raise self._error("expression expected", self._here())
++        chosen = self._branch(self._comma, taken=condition != 0)
++        if not self._is(":"):
++            raise self._error(
++                "`:' expected for conditional expression", self._here()
++            )
++        self.index += 1
++        if self._peek() is None:
++            raise self._error("expression expected", self._last_position())
++        other = self._branch(self._conditional, taken=condition == 0)
++        return chosen if condition != 0 else other
++
++    def _branch(self, read: Callable[[], int], taken: bool) -> int:
++        if taken:
++            return read()
++        self.skipping += 1
++        try:
++            return read()
++        finally:
++            self.skipping -= 1
++
++    def _binary(self, loosest: int) -> int:
++        left = self._power()
++        while True:
++            token = self._peek()
++            if token is not None and token[0] == "op" and token[1] in ("++", "--"):
++                following = self._peek(1)
++                if following is not None and following[0] == "name":
++                    # bash reads this as an increment with nothing to join
++                    # it to the left operand, and the caller reports it.
++                    return left
++                self._split_double()
++                token = self._peek()
++            if token is None or token[0] != "op":
++                return left
++            strength = _BINARY.get(token[1])
++            if strength is None or strength < loosest:
++                return left
++            self.index += 1
++            symbol = token[1]
++            right_at = self._here()
++            if symbol in ("&&", "||"):
++                decided = (left == 0) if symbol == "&&" else (left != 0)
++                right = self._branch(
++                    lambda s=strength: self._binary(s + 1), taken=not decided
++                )
++                if symbol == "&&":
++                    left = int(left != 0 and right != 0)
++                else:
++                    left = int(left != 0 or right != 0)
++                continue
++            right = self._binary(strength + 1)
++            left = self._apply(symbol, left, right, right_at)
++
++    def _power(self) -> int:
++        base = self._unary()
++        if not self._is("**"):
++            return base
++        self.index += 1
++        exponent = self._power()
++        if exponent < 0:
++            raise self._error("exponent less than 0", self._here())
++        # Reducing modulo 2**64 is the wrap bash's repeated multiplication
++        # gives, and it keeps a huge exponent from building a huge number.
++        return _wrap(pow(base, exponent, 1 << 64))
++
++    def _unary(self) -> int:
++        # A run of signs is read in a loop so that a long one cannot exhaust
++        # the interpreter's stack.
++        pending: list[str] = []
++        while True:
++            token = self._peek()
++            if token is None or token[0] != "op":
++                break
++            if token[1] in ("++", "--"):
++                following = self._peek(1)
++                if following is not None and following[0] == "name":
++                    break
++                self._split_double()
++                continue
++            if token[1] not in ("+", "-", "!", "~"):
++                break
++            pending.append(token[1])
++            self.index += 1
++        value = self._operand()
++        for symbol in reversed(pending):
++            if symbol == "-":
++                value = _wrap(-value)
++            elif symbol == "!":
++                value = int(value == 0)
++            elif symbol == "~":
++                value = _wrap(~value)
++        return value
++
++    def _operand(self) -> int:
++        token = self._peek()
++        if token is None:
++            raise self._error(
++                "syntax error: operand expected", self._last_position()
++            )
++        kind, text, position = token
++        if kind == "number":
++            self.index += 1
++            return self._number(text, position)
++        if kind == "name":
++            self.index += 1
++            value = self._variable(text)
++            if self._is("++", "--"):
++                step = 1 if self.tokens[self.index][1] == "++" else -1
++                self.index += 1
++                self._store(text, _wrap(value + step))
++            return value
++        if text in ("++", "--"):
++            # _unary leaves these in place only in front of a variable.
++            self.index += 2
++            name = self.tokens[self.index - 1][1]
++            value = _wrap(self._variable(name) + (1 if text == "++" else -1))
++            self._store(name, value)
++            return value
++        if text == "(":
++            if self.depth >= MAX_DEPTH:
++                raise self._error("expression recursion level exceeded", position)
++            self.index += 1
++            self.depth += 1
++            value = self._comma()
++            self.depth -= 1
++            if not self._is(")"):
++                raise self._error("missing `)'", self._here())
++            self.index += 1
++            return value
++        raise self._error("syntax error: operand expected", position)
++
++    # -- values -------------------------------------------------------------
++
++    def _number(self, text: str, position: int) -> int:
++        too_great = self._error("value too great for base", position)
++        if "#" in text:
++            prefix, _, digits = text.partition("#")
++            if prefix.strip("0") == "":
++                raise self._error("invalid number", position)
++            if not prefix.isdigit() or not 2 <= int(prefix) <= 64:
++                raise self._error("invalid arithmetic base", position)
++            base = int(prefix)
++            if not digits:
++                raise self._error("invalid integer constant", position)
++            if base <= 36:
++                digits = digits.lower()
++        elif text[:2] in ("0x", "0X"):
++            base, digits = 16, text[2:].lower()
++        elif len(text) > 1 and text[0] == "0":
++            base, digits = 8, text[1:]
++        else:
++            base, digits = 10, text
++        value = 0
++        for character in digits:
++            digit = _DIGITS.find(character)
++            if digit < 0 or digit >= base:
++                raise too_great
++            value = value * base + digit
++        return _wrap(value)
++
++    def _variable(self, name: str) -> int:
++        if self.skipping:
++            return 0
++        value = self.lookup(name)
++        if value is None or not value.strip():
++            return 0
++        if self.depth >= MAX_DEPTH:
++            raise self._error("expression recursion level exceeded", 0)
++        # A variable may hold an expression: x="1+2" makes $((x*2)) six.
++        inner = _Evaluator(
++            value, self.lookup, self.assign, self.depth + 1, self.budget
++        )
++        return inner.result()
++
++    def _store(self, name: str, value: int) -> None:
++        if not self.skipping and self.assign is not None:
++            self.assign(name, str(value))
++
++    def _apply(self, symbol: str, left: int, right: int, right_at: int) -> int:
++        if symbol in ("/", "%"):
++            if right == 0:
++                if not self.skipping:
++                    raise self._error("division by 0", right_at)
++                right = 1
++            # C division truncates toward zero, and the remainder takes the
++            # sign of the dividend. Python floors, so work on magnitudes.
++            quotient = abs(left) // abs(right)
++            if (left < 0) != (right < 0):
++                quotient = -quotient
++            if symbol == "/":
++                return _wrap(quotient)
++            return _wrap(left - quotient * right)
++        if symbol in ("<<", ">>"):
++            # The hardware uses the low six bits of the count.
++            count = right & 63
++            return _wrap(left << count) if symbol == "<<" else left >> count
++        return _wrap(_OPERATIONS[symbol](left, right))
++
++
++_OPERATIONS: dict[str, Callable[[int, int], int]] = {
++    "*": lambda a, b: a * b,
++    "+": lambda a, b: a + b,
++    "-": lambda a, b: a - b,
++    "<": lambda a, b: int(a < b),
++    "<=": lambda a, b: int(a <= b),
++    ">": lambda a, b: int(a > b),
++    ">=": lambda a, b: int(a >= b),
++    "==": lambda a, b: int(a == b),
++    "!=": lambda a, b: int(a != b),
++    "&": lambda a, b: a & b,
++    "^": lambda a, b: a ^ b,
++    "|": lambda a, b: a | b,
++}
++
++
++def evaluate(
++    expression: str,
++    lookup: Callable[[str], str | None],
++    assign: Callable[[str, str], None] | None = None,
++) -> int:
++    """Return the value of ``expression``.
++
++    ``lookup`` returns a shell variable's value, or None when it is unset.
++    ``assign`` stores one. Without it the assignment operators compute their
++    value and store nothing.
++    """
++    try:
++        return _Evaluator(expression, lookup, assign, 0, [MAX_TOKENS]).result()
++    except RecursionError:
++        raise ArithmeticError_(
++            expression, "expression recursion level exceeded", ""
++        ) from None
+diff --git a/src/cowrie/shell/bashparse.py b/src/cowrie/shell/bashparse.py
+index 2f2a7e1..e6d299d 100644
+--- a/src/cowrie/shell/bashparse.py
++++ b/src/cowrie/shell/bashparse.py
+@@ -73,6 +73,7 @@ from lark import Lark, Token, Tree
+ from lark.exceptions import LarkError
+ 
+ from cowrie.core.config import CowrieConfig
++from cowrie.shell import arithmetic
+ 
+ # Grammar for the supported bash subset. Whitespace is significant as a word
+ # separator, so it is matched explicitly rather than ignored: adjacent atoms
+@@ -108,7 +109,18 @@ _op: SEP | PIPE | AMP | IO_REDIR | REDIR | NEWLINE | LPAR | RPAR | DSEMI
+ subshell.10: LPAR start RPAR
+ 
+ word: _atom+
+-_atom: sq | dq | cmdsub | backtick | dollar_brace | dollar_var | ESC | BARE_DOLLAR | LITERAL
++_atom: sq | dq | arith | cmdsub | backtick | dollar_brace | dollar_var | ESC | BARE_DOLLAR | LITERAL
++
++// threat-radar patch: arithmetic expansion. "$((" also opens a command
++// substitution that starts with a subshell, so the rule carries a priority
++// that makes the arithmetic reading win whenever the text closes with "))",
++// which is the choice bash makes. Parentheses inside must balance.
++arith.1000: ARITH_OPEN _arith_part* ARITH_CLOSE
++_arith_part: cmdsub | backtick | dollar_brace | dollar_var | arith_group | ARITH_TEXT
++arith_group.20: LPAR _arith_part* RPAR
++ARITH_OPEN.8: "$(("
++ARITH_CLOSE: "))"
++ARITH_TEXT: /[^()$`"']+/
+ 
+ // An explicit, high-priority "$(" terminal so command substitution wins over a
+ // bare "$" followed by the LPAR token now that "(" is a self-standing operator.
+@@ -120,7 +132,7 @@ _bq_atom: dollar_var | dollar_brace | BQ_LITERAL
+ BQ_LITERAL: /[^`]+/
+ 
+ dq: "\"" _dq_part* "\""
+-_dq_part: cmdsub | backtick | dollar_brace | dollar_var | DQ_ESC | DQ_TEXT
++_dq_part: arith | cmdsub | backtick | dollar_brace | dollar_var | DQ_ESC | DQ_TEXT
+ DQ_TEXT: /[^"$`\\]+/
+ DQ_ESC: /\\[\\"$`]/ | /\\/
+ 
+@@ -859,6 +871,8 @@ class BashParser:
+             return await self._eval_dquoted(line, atom)
+         if atom.data == "dollar_var" or atom.data == "dollar_brace":
+             return self._expand_embedded(atom)
++        if atom.data == "arith":
++            return await self._eval_arith(line, atom)
+         if atom.data == "cmdsub":
+             return await self.context.command_substitution(
+                 self._group_source(line, atom)
+@@ -869,6 +883,32 @@ class BashParser:
+             )
+         return ""
+ 
++    async def _eval_arith(self, line: str, node: Tree) -> str:
++        """Expand ``$((...))``: substitute the parameters and commands inside
++        it, as bash does first, then evaluate the text as an integer
++        expression. An invalid expression raises ``ArithmeticError_``, which
++        the shell reports in place of running the command."""
++        expression = await self._arith_text(line, node)
++        return str(
++            arithmetic.evaluate(
++                expression,
++                self.context.get_variable,
++                getattr(self.context, "set_variable", None),
++            )
++        )
++
++    async def _arith_text(self, line: str, node: Tree) -> str:
++        parts: list[str] = []
++        for part in node.children:
++            if isinstance(part, Token):
++                if part.type in ("ARITH_TEXT", "LPAR", "RPAR"):
++                    parts.append(str(part.value))
++            elif part.data == "arith_group":
++                parts.append(await self._arith_text(line, part))
++            else:
++                parts.append(await self._eval_atom(line, part))
++        return "".join(parts)
++
+     async def _eval_dquoted(self, line: str, dq: Tree) -> str:
+         parts: list[str] = []
+         for part in dq.children:
+@@ -880,6 +920,8 @@ class BashParser:
+                 continue
+             if part.data == "dollar_var" or part.data == "dollar_brace":
+                 parts.append(self._expand_embedded(part))
++            elif part.data == "arith":
++                parts.append(await self._eval_arith(line, part))
+             elif part.data == "cmdsub":
+                 parts.append(
+                     await self.context.command_substitution(
+diff --git a/src/cowrie/shell/honeypot.py b/src/cowrie/shell/honeypot.py
+index 5619464..6dde6d5 100644
+--- a/src/cowrie/shell/honeypot.py
++++ b/src/cowrie/shell/honeypot.py
+@@ -25,6 +25,7 @@ from twisted.python.compat import iterbytes
+ 
+ from cowrie.core.config import CowrieConfig
+ from cowrie.shell import fs
++from cowrie.shell.arithmetic import ArithmeticError_
+ from cowrie.shell.bashparse import (
+     BashParser,
+     BraceGroup,
+@@ -369,11 +370,21 @@ class HoneyPotShell:
+             if self.protocol.cmdstack:
+                 self.protocol.cmdstack[-1].resume()
+ 
++    def set_variable(self, name: str, value: str) -> None:
++        """Store a shell variable assigned inside ``$((...))``
++        (threat-radar patch)."""
++        self.environ[name] = value
++
+     def _statement_failed(self, failure: Failure) -> None:
+         """An error escaped a statement's expansion or setup: log it, give the
+         statement bash's generic failure status, and carry on with the queue --
+         a shell that stops responding would fingerprint the honeypot."""
+-        self._log.failure("shell statement failed", failure=failure)
++        if failure.check(ArithmeticError_):
++            # threat-radar patch: bash reports an invalid $((...)) and skips
++            # the command, with status 1.
++            self.protocol.terminal.write(f"-bash: {failure.value}\n".encode())
++        else:
++            self._log.failure("shell statement failed", failure=failure)
+         self.last_exit_code = 1
+         self._advance()
+ 

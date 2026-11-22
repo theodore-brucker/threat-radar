@@ -1,0 +1,261 @@
+diff --git a/src/cowrie/core/checkers.py b/src/cowrie/core/checkers.py
+index 555d805..f615bea 100644
+--- a/src/cowrie/core/checkers.py
++++ b/src/cowrie/core/checkers.py
+@@ -21,7 +21,7 @@ from twisted.logger import Logger
+ from twisted.python import failure
+ from zope.interface import implementer
+ 
+-from cowrie.core import auth
++from cowrie.core import auth, implanted_keys
+ from cowrie.core import credentials as conchcredentials
+ from cowrie.core.config import CowrieConfig
+ from cowrie.core.utils import escape_nonprintable
+@@ -57,6 +57,27 @@ class HoneypotPublicKeyChecker:
+                 **keyfields,
+             )
+ 
++        # threat-radar patch: a key an earlier session wrote to this account's
++        # authorized_keys file is accepted, as sshd would accept it. The
++        # client first asks whether the key is acceptable and then signs the
++        # request, and only a valid signature logs in.
++        if implanted_keys.accepts(credentials.username, _pubKey):
++            if not credentials.signature:
++                return failure.Failure(error.ValidPublicKey())
++            try:
++                signed = _pubKey.verify(credentials.signature, credentials.sigData)
++            except Exception:  # an unverifiable signature is a wrong one
++                signed = False
++            if signed:
++                if events:
++                    events.dispatch(
++                        "cowrie.login.success",
++                        "public key login attempt for [%(username)s] succeeded",
++                        implanted=True,
++                        **keyfields,
++                    )
++                return defer.succeed(credentials.username)
++
+         if CowrieConfig.getboolean("ssh", "auth_publickey_allow_any", fallback=False):
+             if events:
+                 events.dispatch(
+diff --git a/src/cowrie/core/implanted_keys.py b/src/cowrie/core/implanted_keys.py
+new file mode 100644
+index 0000000..45ff231
+--- /dev/null
++++ b/src/cowrie/core/implanted_keys.py
+@@ -0,0 +1,173 @@
++# threat-radar patch: public keys an intruder installed for a later login.
++
++"""
++Remember the keys written to an account's ``authorized_keys`` file.
++
++An intruder who adds a key to ``~/.ssh/authorized_keys`` expects it to open
++the account later. Each session works on its own copy of the filesystem, so
++the file is gone when the session ends and the key would never be accepted.
++This module keeps the fingerprint of each such key in a small file under the
++state directory. The public-key checker then lets in a later login that
++proves it holds the matching private key, and that login reaches the same
++emulated shell a password login reaches.
++
++Everything read here was written by an attacker. The amount read, the number
++of keys taken from one file and the number of keys kept are all capped. No
++error leaves this module: a key that cannot be recorded is skipped, and a key
++that cannot be checked is refused, which is what Cowrie does without the patch.
++``[ssh] auth_publickey_implanted = false`` turns the feature off.
++"""
++
++from __future__ import annotations
++
++import hashlib
++import os
++import re
++import time
++
++from twisted.conch.ssh import keys
++from twisted.logger import Logger
++
++from cowrie.core.config import CowrieConfig
++
++_log = Logger()
++
++# How much of one written file is read, and how many keys it may add.
++MAX_BYTES = 65536
++MAX_KEYS_PER_FILE = 16
++# How many keys are kept in all. The oldest are dropped first.
++MAX_KEPT = 2000
++
++_ACCOUNT = r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,31}"
++_HOME = re.compile(rf"/(?:root|home/(?P<name>{_ACCOUNT}))/\.ssh/authorized_keys2?")
++# A key anywhere on a line, so that options written before it are skipped.
++_KEY = re.compile(
++    rb"(?:ssh-(?:rsa|dss|ed25519)|ecdsa-sha2-nistp(?:256|384|521)"
++    rb"|sk-(?:ssh-ed25519|ecdsa-sha2-nistp256)@openssh\.com)"
++    rb"[ \t]+[A-Za-z0-9+/]{16,4096}={0,2}"
++)
++_LINE = re.compile(rf"(?P<account>{_ACCOUNT}) (?P<fingerprint>[0-9a-f]{{64}}) \d+")
++
++_cache: tuple[tuple[int, int], frozenset[tuple[str, str]]] | None = None
++
++
++def enabled() -> bool:
++    return CowrieConfig.getboolean("ssh", "auth_publickey_implanted", fallback=True)
++
++
++def store_path() -> str:
++    state = CowrieConfig.get("honeypot", "state_path", fallback="var/lib/cowrie")
++    return os.path.join(state, "implanted_keys")
++
++
++def account_for(path: str) -> str | None:
++    """The account whose logins a file at ``path`` would authorise, or None
++    when the path is not an authorized_keys file in a home directory."""
++    match = _HOME.fullmatch(path)
++    if match is None:
++        return None
++    return match.group("name") or "root"
++
++
++def fingerprint(key: keys.Key) -> str:
++    return hashlib.sha256(key.blob()).hexdigest()
++
++
++def fingerprints_in(content: bytes) -> list[str]:
++    """The fingerprints of the well-formed public keys in ``content``."""
++    found: list[str] = []
++    for match in _KEY.finditer(content[:MAX_BYTES]):
++        try:
++            found.append(fingerprint(keys.Key.fromString(match.group())))
++        except Exception:  # a malformed key is skipped, whatever is wrong with it
++            continue
++        if len(found) == MAX_KEYS_PER_FILE:
++            break
++    return found
++
++
++def record(path: str, content: bytes) -> int:
++    """Keep the keys in ``content`` if ``path`` is an authorized_keys file.
++    Returns how many were added."""
++    try:
++        account = account_for(path)
++        if account is None or not enabled():
++            return 0
++        known = _load()
++        fresh = [
++            mark
++            for mark in dict.fromkeys(fingerprints_in(content))
++            if (account, mark) not in known
++        ]
++        if not fresh:
++            return 0
++        now = int(time.time())
++        with open(store_path(), "a", encoding="ascii") as store:
++            store.writelines(f"{account} {mark} {now}\n" for mark in fresh)
++        _trim()
++        _log.info(
++            "kept {count} public key(s) written to {path}",
++            count=len(fresh),
++            path=path,
++        )
++        return len(fresh)
++    except Exception:  # recording must never disturb a session
++        _log.failure("could not record an implanted key")
++        return 0
++
++
++def record_file(path: str, realfile: str) -> int:
++    """Like :func:`record`, reading the content from the backing file."""
++    try:
++        if account_for(path) is None or not enabled():
++            return 0
++        with open(realfile, "rb") as backing:
++            content = backing.read(MAX_BYTES)
++    except Exception:  # an unreadable file records nothing
++        return 0
++    return record(path, content)
++
++
++def accepts(username: bytes | str, key: keys.Key) -> bool:
++    """Whether ``key`` was written to this account's authorized_keys file."""
++    try:
++        if not enabled():
++            return False
++        if isinstance(username, bytes):
++            username = username.decode("utf-8")
++        return (username, fingerprint(key)) in _load()
++    except Exception:  # a check that fails refuses the key
++        return False
++
++
++def _load() -> frozenset[tuple[str, str]]:
++    """The kept keys, read again only when the file has changed."""
++    global _cache
++    try:
++        status = os.stat(store_path())
++    except OSError:
++        return frozenset()
++    stamp = (status.st_mtime_ns, status.st_size)
++    if _cache is not None and _cache[0] == stamp:
++        return _cache[1]
++    kept = frozenset((line.split(" ")[0], line.split(" ")[1]) for line in _lines())
++    _cache = (stamp, kept)
++    return kept
++
++
++def _lines() -> list[str]:
++    """The well-formed lines of the store, oldest first."""
++    with open(store_path(), encoding="ascii", errors="replace") as store:
++        lines = [line.rstrip("\n") for line in store]
++    return [line for line in lines if _LINE.fullmatch(line)]
++
++
++def _trim() -> None:
++    """Drop the oldest keys once more than MAX_KEPT are held."""
++    lines = _lines()
++    if len(lines) <= MAX_KEPT:
++        return
++    partial = store_path() + ".new"
++    with open(partial, "w", encoding="ascii") as store:
++        store.writelines(line + "\n" for line in lines[-MAX_KEPT:])
++    os.replace(partial, store_path())
+diff --git a/src/cowrie/insults/insults.py b/src/cowrie/insults/insults.py
+index e747ce0..6bc3012 100644
+--- a/src/cowrie/insults/insults.py
++++ b/src/cowrie/insults/insults.py
+@@ -15,7 +15,7 @@ from twisted.internet.protocol import connectionDone
+ from twisted.logger import Logger
+ from twisted.python.compat import iterbytes
+ 
+-from cowrie.core import ttylog
++from cowrie.core import implanted_keys, ttylog
+ from cowrie.core.artifact import temp_download_path
+ from cowrie.core.config import CowrieConfig
+ from cowrie.shell import protocol
+@@ -222,6 +222,7 @@ class LoggingServerProtocol(insults.ServerProtocol):
+                         os.remove(rf)
+                         continue
+ 
++                    implanted_keys.record_file(url, rf)  # threat-radar patch
+                     with open(rf, "rb") as f:
+                         shasum = hashlib.sha256(f.read()).hexdigest()
+                     shasumfile = os.path.join(self.downloadPath, shasum)
+diff --git a/src/cowrie/shell/fs.py b/src/cowrie/shell/fs.py
+index e9fc7a0..b967054 100644
+--- a/src/cowrie/shell/fs.py
++++ b/src/cowrie/shell/fs.py
+@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, TypeAlias
+ 
+ from twisted.logger import Logger
+ 
++from cowrie.core import implanted_keys
+ from cowrie.core.artifact import temp_download_path
+ from cowrie.core.config import CowrieConfig
+ from cowrie.core.resources import read_data_bytes
+@@ -518,6 +519,7 @@ class HoneyPotFilesystem:
+         else:
+             os.rename(self.tempfiles[fd], shasumfile)
+         self.update_realfile(self.getfile(self.filenames[fd]), shasumfile)
++        implanted_keys.record_file(self.filenames[fd], shasumfile)  # threat-radar patch
+         self.events.dispatch(
+             "cowrie.session.file_upload",
+             'SFTP Uploaded file "%(filename)s" to %(outfile)s',

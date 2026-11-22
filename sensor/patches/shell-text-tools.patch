@@ -1,0 +1,107 @@
+diff --git a/src/cowrie/commands/fs.py b/src/cowrie/commands/fs.py
+index 137a8ca..6196865 100644
+--- a/src/cowrie/commands/fs.py
++++ b/src/cowrie/commands/fs.py
+@@ -26,6 +26,11 @@ if TYPE_CHECKING:
+ commands: dict[str, Callable] = {}
+ 
+ 
++def count_shorthand(args: list[str]) -> list[str]:
++    """threat-radar patch: read `head -5` and `tail -5` as `-n5`."""
++    return [f"-n{arg[1:]}" if re.fullmatch(r"-\d+", arg) else arg for arg in args]
++
++
+ class Command_grep(HoneyPotCommand):
+     """
+     grep command
+@@ -43,19 +48,35 @@ class Command_grep(HoneyPotCommand):
+         except Exception:
+             self.errorWrite(f"grep: {filename}: No such file or directory\n")
+ 
++    # threat-radar patch: -i, -v, -c and -q, which were accepted and ignored.
++    ignore_case: bool = False
++    invert: bool = False
++    count_only: bool = False
++    quiet: bool = False
++
+     def compile_match(self, match: str) -> re.Pattern[bytes]:
+         bmatch = os.path.basename(match).replace('"', "").encode("utf8")
+-        return re.compile(bmatch)
++        return re.compile(bmatch, re.IGNORECASE if self.ignore_case else 0)
+ 
+     def grep_application(self, contents: bytes, match: str) -> None:
+         matcher = self.compile_match(match)
+-        for line in contents.split(b"\n"):
++        lines = contents.split(b"\n")
++        if (self.invert or self.count_only) and lines and lines[-1] == b"":
++            # The text after the final newline is not a line.
++            lines.pop()
++        for line in lines:
+             if self.max_count is not None and self.match_count >= self.max_count:
+                 break
+-            if matcher.search(line):
++            if bool(matcher.search(line)) != self.invert:
+                 self.matched = True
+                 self.match_count += 1
+-                self.writeBytes(line + b"\n")
++                if not (self.count_only or self.quiet):
++                    self.writeBytes(line + b"\n")
++
++    def grep_finish(self) -> None:
++        if self.count_only and not self.quiet:
++            self.writeBytes(f"{self.match_count}\n".encode())
++        self.exit(0 if self.matched else 1)
+ 
+     def help(self) -> None:
+         self.writeBytes(
+@@ -98,6 +119,14 @@ class Command_grep(HoneyPotCommand):
+         for opt, arg in optlist:
+             if opt == "-h":
+                 self.help()
++            elif opt == "-i":
++                self.ignore_case = True
++            elif opt == "-v":
++                self.invert = True
++            elif opt == "-c":
++                self.count_only = True
++            elif opt == "-q":
++                self.quiet = True
+             elif opt == "-m":
+                 try:
+                     n = int(arg)
+@@ -137,7 +166,7 @@ class Command_grep(HoneyPotCommand):
+             self.interactive = True
+             return
+ 
+-        self.exit(0 if self.matched else 1)
++        self.grep_finish()
+ 
+     def lineReceived(self, line: str) -> None:
+         self.protocol.events.dispatch(
+@@ -162,7 +191,7 @@ class Command_grep(HoneyPotCommand):
+                 # arriving via lineReceived, so match against them now.
+                 with open(terminal.stdinlogFile, "rb") as f:
+                     self.grep_application(f.read(), self.match)
+-        self.exit(0 if self.matched else 1)
++        self.grep_finish()
+ 
+ 
+ commands["/bin/grep"] = Command_grep
+@@ -204,7 +233,7 @@ class Command_tail(HoneyPotCommand):
+             return
+         else:
+             try:
+-                optlist, args = getopt.getopt(self.args, "n:")
++                optlist, args = getopt.getopt(count_shorthand(self.args), "n:")
+             except getopt.GetoptError as err:
+                 self.errorWrite(f"tail: invalid option -- '{err.opt}'\n")
+                 self.exit()
+@@ -274,7 +303,7 @@ class Command_head(HoneyPotCommand):
+             return
+         else:
+             try:
+-                optlist, args = getopt.getopt(self.args, "c:n:")
++                optlist, args = getopt.getopt(count_shorthand(self.args), "c:n:")
+             except getopt.GetoptError as err:
+                 self.errorWrite(f"head: invalid option -- '{err.opt}'\n")
+                 self.exit()

@@ -1,0 +1,183 @@
+diff --git a/src/cowrie/commands/base.py b/src/cowrie/commands/base.py
+index 908b491..bea9ad9 100644
+--- a/src/cowrie/commands/base.py
++++ b/src/cowrie/commands/base.py
+@@ -1088,18 +1088,69 @@ commands["/usr/bin/chattr"] = Command_chattr
+ commands["chattr"] = Command_chattr
+ 
+ 
++def owning_shell(command: HoneyPotCommand) -> Any:
++    """threat-radar patch: the shell a builtin was typed into, or None when
++    something else started the command."""
++    stack = command.protocol.cmdstack
++    shell = stack[-2] if len(stack) > 1 else None
++    return shell if hasattr(shell, "set_positional") else None
++
++
+ class Command_set(HoneyPotCommand):
+     # Basic functionaltly (show only), need enhancements
+     # This will show ALL environ vars, not only the global ones
+     # With enhancements it should work like env when -o posix is used
+     def call(self) -> None:
++        # threat-radar patch: `set -- a b` and `set a b` replace the
++        # positional parameters, and an option such as -e prints nothing.
++        # Only the bare command lists the variables.
++        if self.args:
++            words = list(self.args)
++            while words and words[0][:1] in ("-", "+") and words[0] != "--":
++                option = words.pop(0)
++                if option in ("-o", "+o") and words:
++                    words.pop(0)
++            explicit = bool(words) and words[0] == "--"
++            if explicit:
++                words.pop(0)
++            shell = owning_shell(self)
++            if shell is not None and (explicit or words):
++                shell.set_positional(words)
++            return
+         for i in sorted(self.environ):
+-            self.write(f"{i}={self.environ[i]}\n")
++            if i.isidentifier():
++                self.write(f"{i}={self.environ[i]}\n")
+ 
+ 
+ commands["set"] = Command_set
+ 
+ 
++class Command_shift(HoneyPotCommand):
++    """threat-radar patch: drop the first N positional parameters."""
++
++    def call(self) -> None:
++        shell = owning_shell(self)
++        if shell is None:
++            return
++        current = shell.positional()
++        count = 1
++        if self.args:
++            if not self.args[0].isdigit():
++                self.errorWrite(
++                    f"-bash: shift: {self.args[0]}: numeric argument required\n"
++                )
++                self.exit_code = 1
++                return
++            count = int(self.args[0])
++        if count > len(current):
++            self.exit_code = 1
++            return
++        shell.set_positional(current[count:])
++
++
++commands["shift"] = Command_shift
++
++
+ class Command_export(HoneyPotCommand):
+     """
+     Mark shell variables for export so they appear in the environment of
+diff --git a/src/cowrie/commands/bash.py b/src/cowrie/commands/bash.py
+index ab33193..8fc9c47 100644
+--- a/src/cowrie/commands/bash.py
++++ b/src/cowrie/commands/bash.py
+@@ -66,6 +66,7 @@ class Command_sh(HoneyPotCommand):
+         # self.input_data holds commands passed via PIPE
+         # create new HoneyPotShell for our a new 'sh' shell
+         shell = HoneyPotShell(self.protocol, interactive=False)
++        shell.become_process("bash")  # threat-radar patch
+         self.protocol.cmdstack.append(shell)
+ 
+         # call lineReceived method that indicates that we have some commands to parse
+@@ -118,6 +119,7 @@ class Command_sh(HoneyPotCommand):
+         shell = HoneyPotShell(
+             self.protocol, interactive=interactive, reads_stdin=reads_stdin
+         )
++        shell.become_process("bash")  # threat-radar patch
+         # TODO: copy more variables, but only exported variables
+         try:
+             shell.environ["SHLVL"] = str(int(parentshell.environ["SHLVL"]) + 1)
+diff --git a/src/cowrie/shell/bashparse.py b/src/cowrie/shell/bashparse.py
+index e6d299d..6b903d9 100644
+--- a/src/cowrie/shell/bashparse.py
++++ b/src/cowrie/shell/bashparse.py
+@@ -974,7 +974,7 @@ class BashParser:
+             return None
+         if special == "?":
+             return self.context.get_status()
+-        if special in ("@", "#", "*"):
++        if special in ("@", "#", "*", "$"):  # "$" is a threat-radar patch
+             value = self.context.get_variable(special)
+             return value if value is not None else self._leaf_value(node)
+         return self._leaf_value(node)
+diff --git a/src/cowrie/shell/honeypot.py b/src/cowrie/shell/honeypot.py
+index 6dde6d5..388f2df 100644
+--- a/src/cowrie/shell/honeypot.py
++++ b/src/cowrie/shell/honeypot.py
+@@ -81,6 +81,12 @@ class _Continuation:
+     op: str | None = None
+ 
+ 
++# threat-radar patch. The ps command lists the login shell under this id.
++LOGIN_SHELL_PID = 5673
++# What $#, $@ and $* expand to before anything has set them.
++UNSET_PARAMETERS = {"#": "0", "@": "", "*": ""}
++
++
+ class HoneyPotShell:
+     _log = Logger()
+ 
+@@ -110,6 +116,15 @@ class HoneyPotShell:
+         # that user's home. cwd and user are this shell's own from here on: a
+         # cd or su inside a substitution or nested script shell never changes
+         # the parent's.
++        # threat-radar patch: what $$ and $0 expand to. A substitution or
++        # subshell reports its parent's, as bash does. The first shell uses
++        # the process id the ps command prints for it.
++        if protocol.cmdstack:
++            self.pid: int = getattr(protocol.cmdstack[-1], "pid", LOGIN_SHELL_PID)
++            self.arg0: str = getattr(protocol.cmdstack[-1], "arg0", "bash")
++        else:
++            self.pid = LOGIN_SHELL_PID
++            self.arg0 = "-bash" if interactive else "bash"
+         if protocol.cmdstack:
+             parent = protocol.cmdstack[-1]
+             self.environ: dict[str, str] = copy.copy(parent.environ)
+@@ -167,7 +182,40 @@ class HoneyPotShell:
+ 
+     def get_variable(self, name: str) -> str | None:
+         """Look up a shell variable for the Lark word evaluator."""
+-        return self.environ.get(name)
++        value = self.environ.get(name)
++        if value is None:
++            # threat-radar patch: the parameters bash always has.
++            if name == "$":
++                return str(self.pid)
++            if name == "0":
++                return self.arg0
++            return UNSET_PARAMETERS.get(name)
++        return value
++
++    def positional(self) -> list[str]:
++        """The positional parameters $1, $2 and so on (threat-radar patch)."""
++        values: list[str] = []
++        while str(len(values) + 1) in self.environ:
++            values.append(self.environ[str(len(values) + 1)])
++        return values
++
++    def set_positional(self, values: list[str]) -> None:
++        """Replace the positional parameters, as `set --` does."""
++        for name in [key for key in self.environ if key.isdigit()]:
++            del self.environ[name]
++        for number, value in enumerate(values, start=1):
++            self.environ[str(number)] = value
++        self.environ["#"] = str(len(values))
++        self.environ["@"] = " ".join(values)
++        self.environ["*"] = " ".join(values)
++
++    def become_process(self, name: str) -> None:
++        """Mark this shell as a new process, the way `sh -c` starts one: it
++        has its own process id and no positional parameters."""
++        self.protocol.last_pid = getattr(self.protocol, "last_pid", LOGIN_SHELL_PID + 6) + 1
++        self.pid = self.protocol.last_pid
++        self.arg0 = name
++        self.set_positional([])
+ 
+     def get_status(self) -> str:
+         """Return $? -- the last command's exit status as a string."""
